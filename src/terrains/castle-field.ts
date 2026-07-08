@@ -1,92 +1,99 @@
 import type { TerrainDef } from './schema'
 
 /**
- * Traced from a photo of the physical board:
- * - Castle HQs sit in moats left/right, each with ring roads to 4 bases.
- * - Four wooden catapult platforms (top/bottom pair per side) are the
- *   castle-return special bases.
- * - A river runs down the middle: three stone bases (top/center/bottom)
- *   with two ★★ pool regions between them — hold both banks to claim.
- * - Each side has a 1-medal diamond above and below, and a 3-medal home
- *   region right outside the castle gates (bordered by the owner's HQ).
+ * Traced from the physical board (photo + owner's graph sketch):
+ * - Each castle HQ connects only to its two corner bases; corners feed the
+ *   two "gate" bases, which fan into the middle.
+ * - Four small catapult platforms (top/bottom pair per side) are the
+ *   castle-return special bases, sitting on the outer roads.
+ * - The center column (top/center/bottom) has NO vertical paths — the two
+ *   rivers between those bases are 2-medal regions enclosed by diagonals.
+ * - Corner triangles hold 1 medal each; a 3-medal home region sits right
+ *   behind each side's gates, bordered by the owner's HQ.
  */
 export const castleField: TerrainDef = {
   id: 'castle-field',
   name: 'Castle Field',
   description:
-    'The classic green. Catapult platforms recall a deployed toy to your rack, twin river pools reward holding both banks, and 3 medals sit right outside each castle gate.',
+    'The classic green. Catapult platforms recall a deployed toy to your rack, twin rivers are worth 2 medals each, and 3 medals sit right outside each castle gate.',
   medalObjective: 7,
-  viewBox: { w: 1400, h: 760 },
+  viewBox: { w: 1460, h: 830 },
   theme: { mat: '#7CB84F', matDark: '#4E8B33', accent: '#E8D9A0', icon: 'castle' },
   bases: [
-    { id: 'hq-red', pos: { x: 120, y: 380 }, kind: 'hq', hqOwner: 'red' },
-    { id: 'hq-blue', pos: { x: 1280, y: 380 }, kind: 'hq', hqOwner: 'blue' },
+    { id: 'hq-red', pos: { x: 131, y: 390 }, kind: 'hq', hqOwner: 'red' },
+    { id: 'hq-blue', pos: { x: 1341, y: 397 }, kind: 'hq', hqOwner: 'blue' },
 
     // red (left) side
-    { id: 'tl', pos: { x: 300, y: 150 }, kind: 'base' }, // top-left corner
-    { id: 'ts', pos: { x: 520, y: 130 }, kind: 'base', special: { kind: 'castleReturn' } },
-    { id: 'ml', pos: { x: 450, y: 300 }, kind: 'base' }, // upper gate
-    { id: 'dl', pos: { x: 450, y: 460 }, kind: 'base' }, // lower gate
-    { id: 'bl', pos: { x: 300, y: 610 }, kind: 'base' }, // bottom-left corner
-    { id: 'bs', pos: { x: 520, y: 630 }, kind: 'base', special: { kind: 'castleReturn' } },
+    { id: 'tl', pos: { x: 127, y: 210 }, kind: 'base' }, // top corner
+    { id: 'ts', pos: { x: 387, y: 106 }, kind: 'base', special: { kind: 'castleReturn' } },
+    { id: 'ml', pos: { x: 369, y: 268 }, kind: 'base' }, // upper gate
+    { id: 'dl', pos: { x: 365, y: 548 }, kind: 'base' }, // lower gate
+    { id: 'bl', pos: { x: 149, y: 577 }, kind: 'base' }, // bottom corner
+    { id: 'bs', pos: { x: 383, y: 721 }, kind: 'base', special: { kind: 'castleReturn' } },
 
-    // center river column
-    { id: 'tc', pos: { x: 700, y: 140 }, kind: 'base' },
-    { id: 'cc', pos: { x: 700, y: 380 }, kind: 'base' },
-    { id: 'bc', pos: { x: 700, y: 620 }, kind: 'base' },
+    // center column (no vertical paths between these — rivers run there)
+    { id: 'tc', pos: { x: 635, y: 124 }, kind: 'base' },
+    { id: 'cc', pos: { x: 635, y: 361 }, kind: 'base' },
+    { id: 'bc', pos: { x: 635, y: 714 }, kind: 'base' },
 
     // blue (right) side — mirror
-    { id: 'tr', pos: { x: 1100, y: 150 }, kind: 'base' },
-    { id: 'ts2', pos: { x: 880, y: 130 }, kind: 'base', special: { kind: 'castleReturn' } },
-    { id: 'mr', pos: { x: 950, y: 300 }, kind: 'base' },
-    { id: 'dr', pos: { x: 950, y: 460 }, kind: 'base' },
-    { id: 'br', pos: { x: 1100, y: 610 }, kind: 'base' },
-    { id: 'bs2', pos: { x: 880, y: 630 }, kind: 'base', special: { kind: 'castleReturn' } },
+    { id: 'ts2', pos: { x: 963, y: 91 }, kind: 'base', special: { kind: 'castleReturn' } },
+    { id: 'mr', pos: { x: 963, y: 228 }, kind: 'base' }, // upper gate
+    { id: 'dr', pos: { x: 948, y: 509 }, kind: 'base' }, // lower gate
+    { id: 'bs2', pos: { x: 941, y: 714 }, kind: 'base', special: { kind: 'castleReturn' } },
+    { id: 'tr', pos: { x: 1330, y: 174 }, kind: 'base' }, // top corner
+    { id: 'br', pos: { x: 1341, y: 642 }, kind: 'base' }, // bottom corner
   ],
   edges: [
-    // red castle ring roads
+    // red castle roads
     ['hq-red', 'tl'],
-    ['hq-red', 'ml'],
-    ['hq-red', 'dl'],
     ['hq-red', 'bl'],
-    // red top & bottom roads
-    ['tl', 'ts'],
+    ['tl', 'ml'],
+    ['bl', 'dl'],
+    // red outer roads through the catapult platforms
+    ['ts', 'ml'],
     ['ts', 'tc'],
-    ['bl', 'bs'],
+    ['dl', 'bs'],
     ['bs', 'bc'],
     // red diagonals into the middle
-    ['ts', 'ml'],
+    ['ml', 'tc'],
     ['ml', 'cc'],
     ['dl', 'cc'],
-    ['dl', 'bs'],
-    // river banks
-    ['tc', 'cc'],
-    ['cc', 'bc'],
-    // blue castle ring roads
-    ['hq-blue', 'tr'],
-    ['hq-blue', 'mr'],
-    ['hq-blue', 'dr'],
-    ['hq-blue', 'br'],
-    // blue top & bottom roads
-    ['tr', 'ts2'],
-    ['ts2', 'tc'],
-    ['br', 'bs2'],
-    ['bs2', 'bc'],
+    ['dl', 'bc'],
     // blue diagonals into the middle
-    ['ts2', 'mr'],
+    ['mr', 'tc'],
     ['mr', 'cc'],
     ['dr', 'cc'],
+    ['dr', 'bc'],
+    // blue outer roads through the catapult platforms
+    ['ts2', 'tc'],
+    ['ts2', 'mr'],
     ['dr', 'bs2'],
+    ['bs2', 'bc'],
+    // blue castle roads
+    ['mr', 'tr'],
+    ['dr', 'br'],
+    ['hq-blue', 'tr'],
+    ['hq-blue', 'br'],
   ],
   regions: [
-    { id: 'r-upper-left', baseIds: ['ts', 'tc', 'cc', 'ml'], medals: 1, labelPos: { x: 600, y: 245 } },
-    { id: 'r-lower-left', baseIds: ['bs', 'bc', 'cc', 'dl'], medals: 1, labelPos: { x: 600, y: 515 } },
-    { id: 'r-home-red', baseIds: ['hq-red', 'ml', 'cc', 'dl'], medals: 3, labelPos: { x: 470, y: 380 } },
-    { id: 'r-upper-right', baseIds: ['ts2', 'tc', 'cc', 'mr'], medals: 1, labelPos: { x: 800, y: 245 } },
-    { id: 'r-lower-right', baseIds: ['bs2', 'bc', 'cc', 'dr'], medals: 1, labelPos: { x: 800, y: 515 } },
-    { id: 'r-home-blue', baseIds: ['hq-blue', 'mr', 'cc', 'dr'], medals: 3, labelPos: { x: 930, y: 380 } },
-    // river pools: hold both banks
-    { id: 'r-upper-pool', baseIds: ['tc', 'cc'], medals: 2, labelPos: { x: 700, y: 260 } },
-    { id: 'r-lower-pool', baseIds: ['cc', 'bc'], medals: 2, labelPos: { x: 700, y: 500 } },
+    { id: 'r-top-left', baseIds: ['ts', 'ml', 'tc'], medals: 1, labelPos: { x: 473, y: 181 } },
+    { id: 'r-top-right', baseIds: ['ts2', 'tc', 'mr'], medals: 1, labelPos: { x: 829, y: 152 } },
+    { id: 'r-upper-river', baseIds: ['ml', 'tc', 'mr', 'cc'], medals: 2, labelPos: { x: 635, y: 242 } },
+    { id: 'r-lower-river', baseIds: ['dl', 'cc', 'dr', 'bc'], medals: 2, labelPos: { x: 638, y: 534 } },
+    {
+      id: 'r-home-red',
+      baseIds: ['hq-red', 'tl', 'ml', 'cc', 'dl', 'bl'],
+      medals: 3,
+      labelPos: { x: 315, y: 408 },
+    },
+    {
+      id: 'r-home-blue',
+      baseIds: ['hq-blue', 'tr', 'mr', 'cc', 'dr', 'br'],
+      medals: 3,
+      labelPos: { x: 1055, y: 372 },
+    },
+    { id: 'r-bottom-left', baseIds: ['dl', 'bs', 'bc'], medals: 1, labelPos: { x: 484, y: 667 } },
+    { id: 'r-bottom-right', baseIds: ['bc', 'bs2', 'dr'], medals: 1, labelPos: { x: 801, y: 696 } },
   ],
 }
