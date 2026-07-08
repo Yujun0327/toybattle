@@ -1,4 +1,8 @@
 import { mount } from 'svelte'
+import '@fontsource/lilita-one/400.css'
+import '@fontsource/nunito/400.css'
+import '@fontsource/nunito/700.css'
+import '@fontsource/nunito/800.css'
 import './app.css'
 import App from './App.svelte'
 

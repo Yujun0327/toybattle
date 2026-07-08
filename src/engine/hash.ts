@@ -1,3 +1,4 @@
+import { deepClone } from './clone'
 import type { GameState, PlayerId } from './types'
 
 /**
@@ -5,7 +6,7 @@ import type { GameState, PlayerId } from './types'
  * Private zone contents are excluded; counts are included.
  */
 export function publicProjection(state: GameState): unknown {
-  const pub = structuredClone(state)
+  const pub = deepClone(state)
   for (const p of ['red', 'blue'] as PlayerId[]) {
     delete pub.players[p].rack.known
     delete pub.players[p].reserve.known

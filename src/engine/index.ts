@@ -1,4 +1,5 @@
 export * from './types'
+export * from './clone'
 export * from './troops'
 export * from './zones'
 export * from './legality'

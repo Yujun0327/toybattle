@@ -1,89 +1,81 @@
-<script>
-  import svelteLogo from './assets/svelte.svg'
-  import viteLogo from './assets/vite.svg'
-  import heroImg from './assets/hero.png'
-  import Counter from './lib/Counter.svelte'
+<script lang="ts">
+  import { HotseatSession, OnlineSession } from './app/session.svelte'
+  import { makeRoomCode } from './transport/trystero'
+  import Home from './ui/Home.svelte'
+  import Lobby from './ui/Lobby.svelte'
+  import GameScreen from './ui/GameScreen.svelte'
+
+  let hotseat = $state<HotseatSession | null>(null)
+  let online = $state<OnlineSession | null>(null)
+  let hotseatConfig: { terrainId: string; openRacks: boolean } | null = null
+
+  function roomFromHash(): string | null {
+    const m = location.hash.match(/room=([A-Za-z0-9]{4,})/)
+    return m ? m[1].toUpperCase() : null
+  }
+
+  function syncFromHash() {
+    const room = roomFromHash()
+    if (room && online?.room !== room) {
+      online?.destroy()
+      const creator = sessionStorage.getItem(`creator:${room}`) !== null
+      online = new OnlineSession(room, creator)
+      const picked = sessionStorage.getItem(`creator:${room}`)
+      if (picked) online.pickedTerrain = picked
+    } else if (!room && online) {
+      online.destroy()
+      online = null
+    }
+  }
+
+  syncFromHash()
+  $effect(() => {
+    const handler = () => syncFromHash()
+    window.addEventListener('hashchange', handler)
+    return () => window.removeEventListener('hashchange', handler)
+  })
+
+  function startHotseat(terrainId: string, openRacks: boolean) {
+    hotseatConfig = { terrainId, openRacks }
+    hotseat = new HotseatSession(terrainId, openRacks)
+  }
+
+  function createRoom(terrainId: string) {
+    const code = makeRoomCode()
+    sessionStorage.setItem(`creator:${code}`, terrainId)
+    location.hash = `room=${code}`
+  }
+
+  function joinRoom(code: string) {
+    location.hash = `room=${code}`
+  }
+
+  function exitToHome() {
+    hotseat = null
+    if (online) {
+      online.leave()
+      online = null
+      location.hash = ''
+    }
+  }
+
+  function rematch() {
+    if (hotseat && hotseatConfig) {
+      hotseat = new HotseatSession(hotseatConfig.terrainId, hotseatConfig.openRacks)
+    } else if (online) {
+      online.requestRematch()
+    }
+  }
 </script>
 
-<section id="center">
-  <div class="hero">
-    <img src={heroImg} class="base" width="170" height="179" alt="" />
-    <img src={svelteLogo} class="framework" alt="Svelte logo" />
-    <img src={viteLogo} class="vite" alt="Vite logo" />
-  </div>
-  <div>
-    <h1>Get started</h1>
-    <p>Edit <code>src/App.svelte</code> and save to test <code>HMR</code></p>
-  </div>
-  <Counter />
-</section>
-
-<div class="ticks"></div>
-
-<section id="next-steps">
-  <div id="docs">
-    <svg class="icon" role="presentation" aria-hidden="true">
-      <use href="/icons.svg#documentation-icon"></use>
-    </svg>
-    <h2>Documentation</h2>
-    <p>Your questions, answered</p>
-    <ul>
-      <li>
-        <a href="https://vite.dev/" target="_blank" rel="noreferrer">
-          <img class="logo" src={viteLogo} alt="" />
-          Explore Vite
-        </a>
-      </li>
-      <li>
-        <a href="https://svelte.dev/" target="_blank" rel="noreferrer">
-          <img class="button-icon" src={svelteLogo} alt="" />
-          Learn more
-        </a>
-      </li>
-    </ul>
-  </div>
-  <div id="social">
-    <svg class="icon" role="presentation" aria-hidden="true">
-      <use href="/icons.svg#social-icon"></use>
-    </svg>
-    <h2>Connect with us</h2>
-    <p>Join the Vite community</p>
-    <ul>
-      <li>
-        <a href="https://github.com/vitejs/vite" target="_blank" rel="noreferrer">
-          <svg class="button-icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#github-icon"></use>
-          </svg>
-          GitHub
-        </a>
-      </li>
-      <li>
-        <a href="https://chat.vite.dev/" target="_blank" rel="noreferrer">
-          <svg class="button-icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#discord-icon"></use>
-          </svg>
-          Discord
-        </a>
-      </li>
-      <li>
-        <a href="https://x.com/vite_js" target="_blank" rel="noreferrer">
-          <svg class="button-icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#x-icon"></use>
-          </svg>
-          X.com
-        </a>
-      </li>
-      <li>
-        <a href="https://bsky.app/profile/vite.dev" target="_blank" rel="noreferrer">
-          <svg class="button-icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#bluesky-icon"></use>
-          </svg>
-          Bluesky
-        </a>
-      </li>
-    </ul>
-  </div>
-</section>
-
-<div class="ticks"></div>
-<section id="spacer"></section>
+{#if online}
+  {#if online.playing}
+    <GameScreen session={online} onExit={exitToHome} onRematch={rematch} />
+  {:else}
+    <Lobby session={online} onExit={exitToHome} />
+  {/if}
+{:else if hotseat}
+  <GameScreen session={hotseat} onExit={exitToHome} onRematch={rematch} />
+{:else}
+  <Home onHotseat={startHotseat} onCreateRoom={createRoom} onJoinRoom={joinRoom} />
+{/if}

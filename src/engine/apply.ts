@@ -1,3 +1,4 @@
+import { deepClone } from './clone'
 import type { Ctx } from './legality'
 import {
   canDraw,
@@ -42,7 +43,7 @@ const ACTIVE_SPECIALS = new Set([
  */
 export function applyMove(ctx: Ctx, prev: GameState, actor: PlayerId, move: Move): GameState {
   if (prev.result) throw new RulesError('game is over')
-  const s = structuredClone(prev)
+  const s = deepClone(prev)
 
   if (move.type === 'concede') {
     s.result = { winner: opponent(actor), reason: 'concede' }

@@ -1,3 +1,4 @@
+import { deepClone } from './clone'
 import type { GameState, PlayerId } from './types'
 
 /**
@@ -5,7 +6,7 @@ import type { GameState, PlayerId } from './types'
  * contents are stripped, leaving only counts. Hot-seat UIs skip redaction.
  */
 export function redact(state: GameState, viewer: PlayerId): GameState {
-  const view = structuredClone(state)
+  const view = deepClone(state)
   for (const p of ['red', 'blue'] as PlayerId[]) {
     if (p !== viewer) {
       delete view.players[p].rack.known
