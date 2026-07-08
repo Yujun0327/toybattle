@@ -98,7 +98,8 @@ export function validateTerrain(t: TerrainDef): void {
   for (const r of t.regions) {
     if (regionIds.has(r.id)) throw new Error(`${t.id}: duplicate region id ${r.id}`)
     regionIds.add(r.id)
-    if (r.baseIds.length < 3) throw new Error(`${t.id}: region ${r.id} has fewer than 3 bases`)
+    // 2-base regions are real: e.g. Castle Field's river pools, enclosed by two parallel bank paths
+    if (r.baseIds.length < 2) throw new Error(`${t.id}: region ${r.id} has fewer than 2 bases`)
     for (const b of r.baseIds) if (!ids.has(b)) throw new Error(`${t.id}: region ${r.id} references unknown base ${b}`)
     if (new Set(r.baseIds).size !== r.baseIds.length) throw new Error(`${t.id}: region ${r.id} repeats a base`)
     if (r.medals < 1) throw new Error(`${t.id}: region ${r.id} has no medals`)

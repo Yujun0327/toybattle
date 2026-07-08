@@ -36,6 +36,11 @@ pinned by a named test in `test/`. Change a ruling → change its test.
     (rack is private). Commit-reveal (future) audits it after the game.
 13. **Effect draw limits** — Skully/Star/City-of-Clouds draws respect the
     8-tile rack cap and reserve size, drawing fewer (or zero) when capped.
-14. **Board layouts** — terrain graphs are original layouts *inspired by* the
-    physical boards (not traced copies): same terrain names, special-base
-    behaviors, and medal objectives; different geometry.
+14. **Board layouts** — Castle Field is traced from a photo of the physical
+    board (castle ring roads, four catapult platforms, river pools worth 2,
+    3-medal home regions bordered by each H.Q., objective 7). The other 7
+    terrains remain original layouts *inspired by* the physical boards: same
+    terrain names, special-base behaviors; different geometry.
+15. **Two-base regions** — Castle Field's river pools are enclosed by only
+    two bases (the two banks) plus parallel paths; occupying both banks
+    claims the pool.
