@@ -93,6 +93,7 @@
       A fan-made tribute to <em>Toy Battle</em> (Paolo Mori &amp; Alessandro Zucchini, Repos Production) —
       for private play among friends.
     </p>
+    <p class="build">build {__BUILD_STAMP__}</p>
   </footer>
 
   {#if showRules}
@@ -223,5 +224,10 @@
     color: var(--ink-soft);
     text-align: center;
     max-width: 60ch;
+  }
+
+  .build {
+    margin-top: 0.3rem;
+    opacity: 0.6;
   }
 </style>
