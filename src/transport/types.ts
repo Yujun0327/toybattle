@@ -25,4 +25,6 @@ export interface Transport {
   onPeerJoin(fn: () => void): void
   onPeerLeave(fn: () => void): void
   close(): void
+  /** Number of currently-open signaling relay connections, if known. */
+  relayCount?(): number
 }

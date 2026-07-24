@@ -414,6 +414,11 @@ export class OnlineSession extends BaseSession {
     this.transport.send({ t: 'move', wire })
   }
 
+  /** Open signaling-relay connections (diagnostics for the lobby). */
+  relayCount(): number {
+    return this.transport.relayCount?.() ?? 0
+  }
+
   requestRematch(): void {
     this.rematchWanted = true
     if (this.isHost && this.state.result) {

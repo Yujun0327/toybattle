@@ -6,6 +6,18 @@
   let { session, onExit }: { session: OnlineSession; onExit: () => void } = $props()
 
   let copied = $state(false)
+  let relays = $state(0)
+  let waitedLong = $state(false)
+
+  $effect(() => {
+    relays = session.relayCount()
+    const poll = setInterval(() => (relays = session.relayCount()), 2000)
+    const slow = setTimeout(() => (waitedLong = true), 12000)
+    return () => {
+      clearInterval(poll)
+      clearTimeout(slow)
+    }
+  })
 
   const link = $derived(`${location.origin}${location.pathname}#room=${session.room}`)
 
@@ -43,6 +55,21 @@
       <span class="dot" class:on={session.peerHere}></span>
       {statusText}
     </div>
+    <div class="relays" class:bad={relays === 0}>
+      {relays > 0 ? `signal: ${relays} relay${relays === 1 ? '' : 's'} connected` : 'signal: connecting to relays…'}
+    </div>
+    {#if waitedLong && !session.peerHere}
+      <p class="hint">
+        {#if relays === 0}
+          Can't reach the signaling relays — a firewall or network filter may be blocking them.
+          Try a different network (e.g. phone hotspot).
+        {:else}
+          Still waiting… make sure your friend opened the exact link (or entered code
+          <strong>{session.room}</strong>) and left the tab open. Both of you should be on the
+          latest version of the site — ask them to hard-refresh (Cmd/Ctrl+Shift+R).
+        {/if}
+      </p>
+    {/if}
     <div class="picked">
       <TerrainThumb terrain={getTerrain(session.pickedTerrain)} selected />
     </div>
@@ -115,5 +142,22 @@
     font-weight: 800;
     color: var(--ink-soft);
     text-decoration: underline;
+  }
+
+  .relays {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: var(--grass-lo);
+  }
+
+  .relays.bad {
+    color: var(--red);
+  }
+
+  .hint {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--ink-soft);
+    max-width: 44ch;
   }
 </style>
