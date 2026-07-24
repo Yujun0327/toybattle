@@ -203,17 +203,12 @@ export class OnlineSession extends BaseSession {
   private canReconnect: boolean
   private timers: ReturnType<typeof setInterval>[] = []
   private lastReconnect = Date.now()
-  private hiddenAt: number | null = null
+  /** How many times we've rebuilt the room connection looking for a peer. */
+  scanCount = $state(0)
   private onVisible = () => {
-    if (typeof document === 'undefined') return
-    if (document.hidden) {
-      this.hiddenAt = Date.now()
-      return
-    }
-    // returning to a tab that slept a while: its sockets are likely stale
-    const hiddenFor = this.hiddenAt ? Date.now() - this.hiddenAt : 0
-    this.hiddenAt = null
-    if (!this.peerHere && hiddenFor > 45_000) this.reconnect()
+    if (typeof document === 'undefined' || document.hidden) return
+    // returning to the tab: sockets may have gone stale while asleep
+    if (!this.peerHere) this.reconnect(10_000)
   }
 
   constructor(room: string, creator: boolean, transport?: Transport) {
@@ -255,16 +250,26 @@ export class OnlineSession extends BaseSession {
       }, 3000),
     )
     if (this.canReconnect) {
+      // While unpaired, rebuild the room connection on a jittered cycle.
+      // 20s+ exceeds any viable WebRTC handshake, and the per-client jitter
+      // keeps the two sides from tearing down in lockstep — so a fresh join
+      // on one side always overlaps a live join on the other.
+      const cycle = 20_000 + Math.random() * 6_000
       this.timers.push(
         setInterval(() => {
-          if (!this.peerHere) this.reconnect()
-        }, 70_000),
+          if (!this.peerHere) this.reconnect(15_000)
+        }, cycle),
       )
       if (typeof document !== 'undefined') {
         document.addEventListener('visibilitychange', this.onVisible)
       }
     }
     log(`session up · room=${room} creator=${creator} resumed=${this.started}`)
+  }
+
+  /** Manual "rescan" from the lobby. */
+  rescan(): void {
+    if (!this.peerHere) this.reconnect(3_000)
   }
 
   private attach(t: Transport): void {
@@ -284,16 +289,13 @@ export class OnlineSession extends BaseSession {
     t.onMessage((msg, peerId) => this.onMessage(msg, peerId))
   }
 
-  /**
-   * Tear down a stale room connection and join fresh (same room code).
-   * Spaced ≥60s apart so an in-flight WebRTC handshake (which can take
-   * 10s+ through TURN) is never killed mid-negotiation.
-   */
-  private reconnect(): void {
+  /** Tear down a possibly-stale room connection and join fresh (same room code). */
+  private reconnect(minSpacingMs: number): void {
     if (!this.canReconnect) return
-    if (Date.now() - this.lastReconnect < 60_000) return
+    if (Date.now() - this.lastReconnect < minSpacingMs) return
     this.lastReconnect = Date.now()
-    log('rebuilding room connection (no peer)')
+    this.scanCount++
+    log(`rescanning for a peer (attempt ${this.scanCount})`)
     try {
       this.transport.close()
     } catch {

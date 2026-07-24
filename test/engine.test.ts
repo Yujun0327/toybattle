@@ -294,10 +294,11 @@ describe('troop effects', () => {
 describe('special bases', () => {
   it('Castle Field: return one of your other board troops to your rack', () => {
     const { ctx, state } = hotseatGame('castle-field')
-    put(state, 'tl', 'red', 'roxy') // hq → tl connects the ct catapult platform
+    put(state, 'tl', 'red', 'roxy')
+    put(state, 'gt', 'red', 'roxy') // hq → tl → gt connects the ct catapult platform
     setRack(state, 'red', ['star'])
     let s = applyMove(ctx, state, 'red', { type: 'place', troop: 'star', base: 'ct' })
-    expect(s.pending).toMatchObject({ kind: 'castleReturn', options: ['tl'] })
+    expect(s.pending).toMatchObject({ kind: 'castleReturn', options: ['tl', 'gt'] })
     s = applyMove(ctx, s, 'red', { type: 'choice', value: { base: 'tl' } })
     expect(topOf(s, 'tl')).toBeUndefined()
     expect(s.players.red.rack.known).toContain('roxy')

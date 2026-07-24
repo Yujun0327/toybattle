@@ -59,7 +59,13 @@
     </div>
     <div class="relays" class:bad={relays === 0}>
       {relays > 0 ? `signal: ${relays} relay${relays === 1 ? '' : 's'} connected` : 'signal: connecting to relays…'}
+      {#if session.scanCount > 0 && !session.peerHere}
+        · rescan #{session.scanCount}
+      {/if}
     </div>
+    {#if !session.peerHere}
+      <button class="btn small gold" onclick={() => session.rescan()}>⟳ Rescan for friend</button>
+    {/if}
     {#if waitedLong && !session.peerHere}
       <p class="hint">
         {#if relays === 0}

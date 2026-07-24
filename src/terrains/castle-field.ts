@@ -1,17 +1,19 @@
 import type { TerrainDef } from './schema'
 
 /**
- * Traced from the official board (rotated: red castle left, blue right):
- * - Each HQ chains to its two corner bases; each corner leads to a gate.
- *   The two gates of a side are linked to each other and fan into the
- *   middle: each gate reaches the center river base AND its outer river base.
- * - Top and bottom roads run corner → catapult platform → outer river base;
- *   the four catapult platforms are the castle-return special bases.
- * - Regions: each side's TWO GATES + THE CENTER RIVER BASE enclose a
- *   3-medal triangle; the two water gaps are 2-medal diamonds; the four
- *   quadrant pockets around the catapults hold 1 medal each.
- * - The center river base borders four regions — completing several at
- *   once with a single placement is possible (and intended).
+ * Traced from the official board and the owner's corrections
+ * (rotated: red castle left, blue right):
+ * - Each HQ chains to its two corner bases; each corner leads to a gate;
+ *   each gate fans to the center bridge and its outer river base.
+ * - Each catapult platform (castle-return special) hangs on a short loop
+ *   between its gate and its river base — the platform + gate + river
+ *   base triangle holds 1 medal.
+ * - The two water gaps are 2-medal diamonds around the center bridge.
+ * - The 3-medal courtyard is the large pocket behind each side's gates,
+ *   bordered by that side's own HQ (so only its owner can realistically
+ *   claim it).
+ * - The center bridge borders four regions — completing several at once
+ *   with a single placement is possible (and intended).
  */
 export const castleField: TerrainDef = {
   id: 'castle-field',
@@ -52,45 +54,53 @@ export const castleField: TerrainDef = {
     ['hq-red', 'bl'],
     ['tl', 'gt'],
     ['bl', 'gb'],
-    ['gt', 'gb'],
     // red gates fan into the middle
     ['gt', 'rc'],
     ['gb', 'rc'],
     ['gt', 'rt'],
     ['gb', 'rb'],
-    // top/bottom roads through the red catapults
-    ['tl', 'ct'],
+    // red catapult platforms hang between their gate and river base
+    ['ct', 'gt'],
     ['ct', 'rt'],
-    ['bl', 'cb'],
+    ['cb', 'gb'],
     ['cb', 'rb'],
     // blue castle chains + corner→gate roads
     ['hq-blue', 'tr'],
     ['hq-blue', 'br'],
     ['tr', 'gt2'],
     ['br', 'gb2'],
-    ['gt2', 'gb2'],
     // blue gates fan into the middle
     ['gt2', 'rc'],
     ['gb2', 'rc'],
     ['gt2', 'rt'],
     ['gb2', 'rb'],
-    // top/bottom roads through the blue catapults
-    ['tr', 'ct2'],
+    // blue catapult platforms hang between their gate and river base
+    ['ct2', 'gt2'],
     ['ct2', 'rt'],
-    ['br', 'cb2'],
+    ['cb2', 'gb2'],
     ['cb2', 'rb'],
   ],
   regions: [
-    // 3-medal courtyards: a side's two gates + the center bridge
-    { id: 'r-red-court', baseIds: ['gt', 'gb', 'rc'], medals: 3, labelPos: { x: 480, y: 441 } },
-    { id: 'r-blue-court', baseIds: ['gt2', 'gb2', 'rc'], medals: 3, labelPos: { x: 990, y: 441 } },
+    // 3-medal courtyards: the pocket behind each side's gates (HQ borders it)
+    {
+      id: 'r-red-court',
+      baseIds: ['hq-red', 'tl', 'gt', 'rc', 'gb', 'bl'],
+      medals: 3,
+      labelPos: { x: 480, y: 441 },
+    },
+    {
+      id: 'r-blue-court',
+      baseIds: ['hq-blue', 'tr', 'gt2', 'rc', 'gb2', 'br'],
+      medals: 3,
+      labelPos: { x: 990, y: 441 },
+    },
     // river waters: 2 medals each
     { id: 'r-water-top', baseIds: ['gt', 'rt', 'gt2', 'rc'], medals: 2, labelPos: { x: 736, y: 270 } },
     { id: 'r-water-bottom', baseIds: ['gb', 'rb', 'gb2', 'rc'], medals: 2, labelPos: { x: 736, y: 556 } },
-    // quadrant pockets around the catapult platforms
-    { id: 'r-top-left', baseIds: ['tl', 'gt', 'rt', 'ct'], medals: 1, labelPos: { x: 430, y: 216 } },
-    { id: 'r-bottom-left', baseIds: ['bl', 'gb', 'rb', 'cb'], medals: 1, labelPos: { x: 430, y: 626 } },
-    { id: 'r-top-right', baseIds: ['tr', 'gt2', 'rt', 'ct2'], medals: 1, labelPos: { x: 1040, y: 216 } },
-    { id: 'r-bottom-right', baseIds: ['br', 'gb2', 'rb', 'cb2'], medals: 1, labelPos: { x: 1040, y: 626 } },
+    // catapult triangles: platform + its gate + its river base
+    { id: 'r-top-left', baseIds: ['ct', 'gt', 'rt'], medals: 1, labelPos: { x: 530, y: 205 } },
+    { id: 'r-bottom-left', baseIds: ['cb', 'gb', 'rb'], medals: 1, labelPos: { x: 530, y: 650 } },
+    { id: 'r-top-right', baseIds: ['ct2', 'gt2', 'rt'], medals: 1, labelPos: { x: 940, y: 205 } },
+    { id: 'r-bottom-right', baseIds: ['cb2', 'gb2', 'rb'], medals: 1, labelPos: { x: 940, y: 650 } },
   ],
 }
