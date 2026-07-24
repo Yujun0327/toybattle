@@ -148,8 +148,10 @@
           />
         </g>
         {#if top}
-          <g transform={`translate(${p.x - 50 * TILE_SCALE}, ${p.y - 90 * TILE_SCALE}) scale(${TILE_SCALE})`} class="tile pop">
-            <TroopTile troop={top.troop} owner={top.owner} />
+          <g transform={`translate(${p.x - 50 * TILE_SCALE}, ${p.y - 90 * TILE_SCALE}) scale(${TILE_SCALE})`}>
+            <g class="drop-in">
+              <TroopTile troop={top.troop} owner={top.owner} />
+            </g>
           </g>
         {/if}
       {:else}
@@ -188,9 +190,10 @@
         {#if top}
           <g
             transform={`translate(${p.x - 50 * TILE_SCALE}, ${p.y + 14 - 114 * TILE_SCALE - (stack.length - 1) * 5}) scale(${TILE_SCALE})`}
-            class="tile pop"
           >
-            <TroopTile troop={top.troop} owner={top.owner} />
+            <g class="drop-in">
+              <TroopTile troop={top.troop} owner={top.owner} />
+            </g>
           </g>
         {/if}
 
@@ -244,18 +247,22 @@
     }
   }
 
-  .tile.pop {
+  /*
+   * NB: the animated group must carry NO transform attribute and use pure
+   * translation only. transform-origin on SVG resolves against the whole
+   * viewBox, which displaced scaled tiles wildly off their sockets.
+   */
+  .drop-in {
     animation: drop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
-    transform-origin: center bottom;
   }
 
   @keyframes drop {
     0% {
-      translate: 0 -26px;
-      opacity: 0.4;
+      translate: 0 -40px;
+      opacity: 0.3;
     }
     60% {
-      translate: 0 3px;
+      translate: 0 5px;
     }
     100% {
       translate: 0 0;

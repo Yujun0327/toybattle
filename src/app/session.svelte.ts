@@ -26,6 +26,11 @@ export type OnlineStatus =
 
 const RULES_VERSION = '2'
 
+/** Console breadcrumb trail for connection debugging. */
+function log(text: string): void {
+  console.log(`[toybattle] ${text}`)
+}
+
 abstract class BaseSession {
   ctx: Ctx
   state = $state<GameState>() as GameState
@@ -197,8 +202,18 @@ export class OnlineSession extends BaseSession {
   private partnerId: string | null = null
   private canReconnect: boolean
   private timers: ReturnType<typeof setInterval>[] = []
+  private lastReconnect = Date.now()
+  private hiddenAt: number | null = null
   private onVisible = () => {
-    if (!this.peerHere) this.reconnect()
+    if (typeof document === 'undefined') return
+    if (document.hidden) {
+      this.hiddenAt = Date.now()
+      return
+    }
+    // returning to a tab that slept a while: its sockets are likely stale
+    const hiddenFor = this.hiddenAt ? Date.now() - this.hiddenAt : 0
+    this.hiddenAt = null
+    if (!this.peerHere && hiddenFor > 45_000) this.reconnect()
   }
 
   constructor(room: string, creator: boolean, transport?: Transport) {
@@ -243,21 +258,24 @@ export class OnlineSession extends BaseSession {
       this.timers.push(
         setInterval(() => {
           if (!this.peerHere) this.reconnect()
-        }, 25000),
+        }, 70_000),
       )
       if (typeof document !== 'undefined') {
         document.addEventListener('visibilitychange', this.onVisible)
       }
     }
+    log(`session up · room=${room} creator=${creator} resumed=${this.started}`)
   }
 
   private attach(t: Transport): void {
     t.onPeerJoin((peerId) => {
+      log(`peer joined: ${peerId}`)
       if (this.partnerId && peerId !== this.partnerId) return // spectator; hello handler rejects them
       if (this.status === 'connecting') this.status = 'handshake'
       this.sendHello()
     })
     t.onPeerLeave((peerId) => {
+      log(`peer left: ${peerId}`)
       if (peerId !== this.partnerId) return
       this.partnerId = null
       this.peerHere = false
@@ -266,9 +284,16 @@ export class OnlineSession extends BaseSession {
     t.onMessage((msg, peerId) => this.onMessage(msg, peerId))
   }
 
-  /** Tear down a stale room connection and join fresh (same room code). */
+  /**
+   * Tear down a stale room connection and join fresh (same room code).
+   * Spaced ≥60s apart so an in-flight WebRTC handshake (which can take
+   * 10s+ through TURN) is never killed mid-negotiation.
+   */
   private reconnect(): void {
     if (!this.canReconnect) return
+    if (Date.now() - this.lastReconnect < 60_000) return
+    this.lastReconnect = Date.now()
+    log('rebuilding room connection (no peer)')
     try {
       this.transport.close()
     } catch {
@@ -326,6 +351,8 @@ export class OnlineSession extends BaseSession {
     } else if (peerId !== this.partnerId) {
       return
     }
+
+    if (msg.t !== 'move') log(`recv ${msg.t} from ${peerId}`)
 
     switch (msg.t) {
       case 'hello': {
@@ -400,6 +427,7 @@ export class OnlineSession extends BaseSession {
       rulesVersion: RULES_VERSION,
     }
     const gameId = `${this.room}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(36)}`
+    log(`hosting game ${gameId} on ${cfg.terrainId}, I am ${mySide}`)
     this.transport.send({ t: 'config', gameId, cfg, yourSide: opponent(mySide) })
     this.adoptGame(gameId, cfg, mySide, [])
   }

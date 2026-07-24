@@ -75,7 +75,7 @@ describe('app UI', () => {
     // click a highlighted base → the tile lands on the board
     const target = document.querySelector('svg.board g.clickable') as HTMLElement
     click(target)
-    const placed = document.querySelectorAll('svg.board .tile')
+    const placed = document.querySelectorAll('svg.board .drop-in')
     expect(placed.length).toBeGreaterThanOrEqual(1)
   })
 
