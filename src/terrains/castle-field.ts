@@ -1,99 +1,96 @@
 import type { TerrainDef } from './schema'
 
 /**
- * Traced from the physical board (photo + owner's graph sketch):
- * - Each castle HQ connects only to its two corner bases; corners feed the
- *   two "gate" bases, which fan into the middle.
- * - Four small catapult platforms (top/bottom pair per side) are the
- *   castle-return special bases, sitting on the outer roads.
- * - The center column (top/center/bottom) has NO vertical paths — the two
- *   rivers between those bases are 2-medal regions enclosed by diagonals.
- * - Corner triangles hold 1 medal each; a 3-medal home region sits right
- *   behind each side's gates, bordered by the owner's HQ.
+ * Traced from the official board (rotated: red castle left, blue right):
+ * - Each HQ chains to its two corner bases; each corner leads to a gate.
+ *   The two gates of a side are linked to each other and fan into the
+ *   middle: each gate reaches the center river base AND its outer river base.
+ * - Top and bottom roads run corner → catapult platform → outer river base;
+ *   the four catapult platforms are the castle-return special bases.
+ * - Regions: each side's TWO GATES + THE CENTER RIVER BASE enclose a
+ *   3-medal triangle; the two water gaps are 2-medal diamonds; the four
+ *   quadrant pockets around the catapults hold 1 medal each.
+ * - The center river base borders four regions — completing several at
+ *   once with a single placement is possible (and intended).
  */
 export const castleField: TerrainDef = {
   id: 'castle-field',
   name: 'Castle Field',
   description:
-    'The classic green. Catapult platforms recall a deployed toy to your rack, twin rivers are worth 2 medals each, and 3 medals sit right outside each castle gate.',
+    'The classic green. Catapult platforms recall a deployed toy, the river is worth 2 medals a bank, and each pair of castle gates guards a 3-medal courtyard around the contested center bridge.',
   medalObjective: 7,
   viewBox: { w: 1460, h: 830 },
   theme: { mat: '#7CB84F', matDark: '#4E8B33', accent: '#E8D9A0', icon: 'castle' },
   bases: [
-    { id: 'hq-red', pos: { x: 131, y: 390 }, kind: 'hq', hqOwner: 'red' },
-    { id: 'hq-blue', pos: { x: 1341, y: 397 }, kind: 'hq', hqOwner: 'blue' },
+    { id: 'hq-red', pos: { x: 130, y: 412 }, kind: 'hq', hqOwner: 'red' },
+    { id: 'hq-blue', pos: { x: 1350, y: 412 }, kind: 'hq', hqOwner: 'blue' },
 
     // red (left) side
-    { id: 'tl', pos: { x: 127, y: 210 }, kind: 'base' }, // top corner
-    { id: 'ts', pos: { x: 387, y: 106 }, kind: 'base', special: { kind: 'castleReturn' } },
-    { id: 'ml', pos: { x: 369, y: 268 }, kind: 'base' }, // upper gate
-    { id: 'dl', pos: { x: 365, y: 548 }, kind: 'base' }, // lower gate
-    { id: 'bl', pos: { x: 149, y: 577 }, kind: 'base' }, // bottom corner
-    { id: 'bs', pos: { x: 383, y: 721 }, kind: 'base', special: { kind: 'castleReturn' } },
+    { id: 'tl', pos: { x: 160, y: 146 }, kind: 'base' }, // top corner
+    { id: 'bl', pos: { x: 160, y: 676 }, kind: 'base' }, // bottom corner
+    { id: 'gt', pos: { x: 370, y: 326 }, kind: 'base' }, // upper gate
+    { id: 'gb', pos: { x: 370, y: 556 }, kind: 'base' }, // lower gate
+    { id: 'ct', pos: { x: 470, y: 116 }, kind: 'base', special: { kind: 'castleReturn' } },
+    { id: 'cb', pos: { x: 470, y: 716 }, kind: 'base', special: { kind: 'castleReturn' } },
 
-    // center column (no vertical paths between these — rivers run there)
-    { id: 'tc', pos: { x: 635, y: 124 }, kind: 'base' },
-    { id: 'cc', pos: { x: 635, y: 361 }, kind: 'base' },
-    { id: 'bc', pos: { x: 635, y: 714 }, kind: 'base' },
+    // river column (no paths between these — the water gaps are regions)
+    { id: 'rt', pos: { x: 730, y: 126 }, kind: 'base' },
+    { id: 'rc', pos: { x: 740, y: 412 }, kind: 'base' },
+    { id: 'rb', pos: { x: 730, y: 696 }, kind: 'base' },
 
     // blue (right) side — mirror
-    { id: 'ts2', pos: { x: 963, y: 91 }, kind: 'base', special: { kind: 'castleReturn' } },
-    { id: 'mr', pos: { x: 963, y: 228 }, kind: 'base' }, // upper gate
-    { id: 'dr', pos: { x: 948, y: 509 }, kind: 'base' }, // lower gate
-    { id: 'bs2', pos: { x: 941, y: 714 }, kind: 'base', special: { kind: 'castleReturn' } },
-    { id: 'tr', pos: { x: 1330, y: 174 }, kind: 'base' }, // top corner
-    { id: 'br', pos: { x: 1341, y: 642 }, kind: 'base' }, // bottom corner
+    { id: 'ct2', pos: { x: 1010, y: 116 }, kind: 'base', special: { kind: 'castleReturn' } },
+    { id: 'cb2', pos: { x: 1010, y: 716 }, kind: 'base', special: { kind: 'castleReturn' } },
+    { id: 'gt2', pos: { x: 1100, y: 326 }, kind: 'base' },
+    { id: 'gb2', pos: { x: 1100, y: 556 }, kind: 'base' },
+    { id: 'tr', pos: { x: 1310, y: 146 }, kind: 'base' },
+    { id: 'br', pos: { x: 1310, y: 676 }, kind: 'base' },
   ],
   edges: [
-    // red castle roads
+    // red castle chains + corner→gate roads
     ['hq-red', 'tl'],
     ['hq-red', 'bl'],
-    ['tl', 'ml'],
-    ['bl', 'dl'],
-    // red outer roads through the catapult platforms
-    ['ts', 'ml'],
-    ['ts', 'tc'],
-    ['dl', 'bs'],
-    ['bs', 'bc'],
-    // red diagonals into the middle
-    ['ml', 'tc'],
-    ['ml', 'cc'],
-    ['dl', 'cc'],
-    ['dl', 'bc'],
-    // blue diagonals into the middle
-    ['mr', 'tc'],
-    ['mr', 'cc'],
-    ['dr', 'cc'],
-    ['dr', 'bc'],
-    // blue outer roads through the catapult platforms
-    ['ts2', 'tc'],
-    ['ts2', 'mr'],
-    ['dr', 'bs2'],
-    ['bs2', 'bc'],
-    // blue castle roads
-    ['mr', 'tr'],
-    ['dr', 'br'],
+    ['tl', 'gt'],
+    ['bl', 'gb'],
+    ['gt', 'gb'],
+    // red gates fan into the middle
+    ['gt', 'rc'],
+    ['gb', 'rc'],
+    ['gt', 'rt'],
+    ['gb', 'rb'],
+    // top/bottom roads through the red catapults
+    ['tl', 'ct'],
+    ['ct', 'rt'],
+    ['bl', 'cb'],
+    ['cb', 'rb'],
+    // blue castle chains + corner→gate roads
     ['hq-blue', 'tr'],
     ['hq-blue', 'br'],
+    ['tr', 'gt2'],
+    ['br', 'gb2'],
+    ['gt2', 'gb2'],
+    // blue gates fan into the middle
+    ['gt2', 'rc'],
+    ['gb2', 'rc'],
+    ['gt2', 'rt'],
+    ['gb2', 'rb'],
+    // top/bottom roads through the blue catapults
+    ['tr', 'ct2'],
+    ['ct2', 'rt'],
+    ['br', 'cb2'],
+    ['cb2', 'rb'],
   ],
   regions: [
-    { id: 'r-top-left', baseIds: ['ts', 'ml', 'tc'], medals: 1, labelPos: { x: 473, y: 181 } },
-    { id: 'r-top-right', baseIds: ['ts2', 'tc', 'mr'], medals: 1, labelPos: { x: 829, y: 152 } },
-    { id: 'r-upper-river', baseIds: ['ml', 'tc', 'mr', 'cc'], medals: 2, labelPos: { x: 635, y: 242 } },
-    { id: 'r-lower-river', baseIds: ['dl', 'cc', 'dr', 'bc'], medals: 2, labelPos: { x: 638, y: 534 } },
-    {
-      id: 'r-home-red',
-      baseIds: ['hq-red', 'tl', 'ml', 'cc', 'dl', 'bl'],
-      medals: 3,
-      labelPos: { x: 315, y: 408 },
-    },
-    {
-      id: 'r-home-blue',
-      baseIds: ['hq-blue', 'tr', 'mr', 'cc', 'dr', 'br'],
-      medals: 3,
-      labelPos: { x: 1055, y: 372 },
-    },
-    { id: 'r-bottom-left', baseIds: ['dl', 'bs', 'bc'], medals: 1, labelPos: { x: 484, y: 667 } },
-    { id: 'r-bottom-right', baseIds: ['bc', 'bs2', 'dr'], medals: 1, labelPos: { x: 801, y: 696 } },
+    // 3-medal courtyards: a side's two gates + the center bridge
+    { id: 'r-red-court', baseIds: ['gt', 'gb', 'rc'], medals: 3, labelPos: { x: 480, y: 441 } },
+    { id: 'r-blue-court', baseIds: ['gt2', 'gb2', 'rc'], medals: 3, labelPos: { x: 990, y: 441 } },
+    // river waters: 2 medals each
+    { id: 'r-water-top', baseIds: ['gt', 'rt', 'gt2', 'rc'], medals: 2, labelPos: { x: 736, y: 270 } },
+    { id: 'r-water-bottom', baseIds: ['gb', 'rb', 'gb2', 'rc'], medals: 2, labelPos: { x: 736, y: 556 } },
+    // quadrant pockets around the catapult platforms
+    { id: 'r-top-left', baseIds: ['tl', 'gt', 'rt', 'ct'], medals: 1, labelPos: { x: 430, y: 216 } },
+    { id: 'r-bottom-left', baseIds: ['bl', 'gb', 'rb', 'cb'], medals: 1, labelPos: { x: 430, y: 626 } },
+    { id: 'r-top-right', baseIds: ['tr', 'gt2', 'rt', 'ct2'], medals: 1, labelPos: { x: 1040, y: 216 } },
+    { id: 'r-bottom-right', baseIds: ['br', 'gb2', 'rb', 'cb2'], medals: 1, labelPos: { x: 1040, y: 626 } },
   ],
 }

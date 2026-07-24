@@ -135,18 +135,18 @@ describe('winning', () => {
 
   it('claimed regions never re-award', () => {
     const { ctx, state } = hotseatGame('castle-field')
-    // hand red the r-top-left triangle (ts, ml, tc); the completing tile
-    // lands on ml, which has no special-base effect (tl bridges the connection)
-    for (const b of ['tl', 'ts', 'tc']) put(state, b, 'red', 'roxy')
+    // hand red the r-top-left pocket (tl, gt, rt, ct); the completing tile
+    // lands on gt, which has no special-base effect
+    for (const b of ['tl', 'rt', 'ct']) put(state, b, 'red', 'roxy')
     setRack(state, 'red', ['star'])
-    let s = applyMove(ctx, state, 'red', { type: 'place', troop: 'star', base: 'ml' })
+    let s = applyMove(ctx, state, 'red', { type: 'place', troop: 'star', base: 'gt' })
     expect(s.players.red.medals).toBe(1)
     expect(s.regionsClaimed['r-top-left']).toBe('red')
-    // blue seizes tc (cheat placement), then red re-completes the region — no second award
-    put(s, 'tc', 'blue', 'roxy')
+    // blue seizes rt (cheat placement), then red re-completes the region — no second award
+    put(s, 'rt', 'blue', 'roxy')
     s.turn = 'red'
     setRack(s, 'red', ['kwak'])
-    s = applyMove(ctx, s, 'red', { type: 'place', troop: 'kwak', base: 'tc' })
+    s = applyMove(ctx, s, 'red', { type: 'place', troop: 'kwak', base: 'rt' })
     expect(s.regionsClaimed['r-top-left']).toBe('red')
     expect(s.players.red.medals).toBe(1)
   })
@@ -279,13 +279,12 @@ describe('troop effects', () => {
 describe('special bases', () => {
   it('Castle Field: return one of your other board troops to your rack', () => {
     const { ctx, state } = hotseatGame('castle-field')
-    put(state, 'tl', 'red', 'roxy')
-    put(state, 'ml', 'red', 'roxy') // hq → tl → ml connects the ts catapult platform
+    put(state, 'tl', 'red', 'roxy') // hq → tl connects the ct catapult platform
     setRack(state, 'red', ['star'])
-    let s = applyMove(ctx, state, 'red', { type: 'place', troop: 'star', base: 'ts' })
-    expect(s.pending).toMatchObject({ kind: 'castleReturn', options: ['tl', 'ml'] })
-    s = applyMove(ctx, s, 'red', { type: 'choice', value: { base: 'ml' } })
-    expect(topOf(s, 'ml')).toBeUndefined()
+    let s = applyMove(ctx, state, 'red', { type: 'place', troop: 'star', base: 'ct' })
+    expect(s.pending).toMatchObject({ kind: 'castleReturn', options: ['tl'] })
+    s = applyMove(ctx, s, 'red', { type: 'choice', value: { base: 'tl' } })
+    expect(topOf(s, 'tl')).toBeUndefined()
     expect(s.players.red.rack.known).toContain('roxy')
   })
 
