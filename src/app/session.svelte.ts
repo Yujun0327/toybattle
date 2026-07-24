@@ -22,8 +22,9 @@ export type OnlineStatus =
   | 'peer-left'
   | 'desync'
   | 'room-full'
+  | 'version-mismatch'
 
-const RULES_VERSION = '1'
+const RULES_VERSION = '2'
 
 abstract class BaseSession {
   ctx: Ctx
@@ -192,6 +193,13 @@ export class OnlineSession extends BaseSession {
   private creator: boolean
   private peerCreator = false
   private started = false
+  /** The one peer we play with — rooms are locked to 2 players. */
+  private partnerId: string | null = null
+  private canReconnect: boolean
+  private timers: ReturnType<typeof setInterval>[] = []
+  private onVisible = () => {
+    if (!this.peerHere) this.reconnect()
+  }
 
   constructor(room: string, creator: boolean, transport?: Transport) {
     // placeholder state until config arrives (or a saved game restores)
@@ -219,17 +227,55 @@ export class OnlineSession extends BaseSession {
     }
     this.room = room
     this.creator = creator
+    this.canReconnect = !transport
     this.transport = transport ?? connectRoom(room)
-    this.transport.onPeerJoin(() => {
-      this.peerHere = true
+    this.attach(this.transport)
+
+    // resilience: relays go stale (idle timeouts, laptop sleep, tab throttling)
+    // — keep hailing until the handshake completes, and rebuild the room
+    // connection if nobody shows up for a while.
+    this.timers.push(
+      setInterval(() => {
+        if (!this.started && this.status !== 'room-full') this.sendHello()
+      }, 3000),
+    )
+    if (this.canReconnect) {
+      this.timers.push(
+        setInterval(() => {
+          if (!this.peerHere) this.reconnect()
+        }, 25000),
+      )
+      if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', this.onVisible)
+      }
+    }
+  }
+
+  private attach(t: Transport): void {
+    t.onPeerJoin((peerId) => {
+      if (this.partnerId && peerId !== this.partnerId) return // spectator; hello handler rejects them
       if (this.status === 'connecting') this.status = 'handshake'
       this.sendHello()
     })
-    this.transport.onPeerLeave(() => {
+    t.onPeerLeave((peerId) => {
+      if (peerId !== this.partnerId) return
+      this.partnerId = null
       this.peerHere = false
       if (this.status === 'playing') this.status = 'peer-left'
     })
-    this.transport.onMessage((msg) => this.onMessage(msg))
+    t.onMessage((msg, peerId) => this.onMessage(msg, peerId))
+  }
+
+  /** Tear down a stale room connection and join fresh (same room code). */
+  private reconnect(): void {
+    if (!this.canReconnect) return
+    try {
+      this.transport.close()
+    } catch {
+      /* already dead */
+    }
+    this.transport = connectRoom(this.room)
+    this.attach(this.transport)
   }
 
   get mySide(): PlayerId {
@@ -261,7 +307,26 @@ export class OnlineSession extends BaseSession {
     return this.myNonce > this.peerNonce
   }
 
-  private onMessage(msg: NetMsg): void {
+  private onMessage(msg: NetMsg, peerId: string): void {
+    // roomFull must get through even though the sender is not our partner —
+    // it's the answer to a rejected hello.
+    if (msg.t === 'roomFull') {
+      if (!this.started) this.status = 'room-full'
+      return
+    }
+    // 2-player lock: the first peer to say hello takes the seat; later peers
+    // are turned away. Non-partner messages are otherwise ignored.
+    if (msg.t === 'hello') {
+      if (this.partnerId === null) {
+        this.partnerId = peerId
+      } else if (peerId !== this.partnerId) {
+        this.transport.send({ t: 'roomFull' }, peerId)
+        return
+      }
+    } else if (peerId !== this.partnerId) {
+      return
+    }
+
     switch (msg.t) {
       case 'hello': {
         this.peerHere = true
@@ -284,6 +349,10 @@ export class OnlineSession extends BaseSession {
         return
       }
       case 'config': {
+        if (msg.cfg.rulesVersion !== RULES_VERSION) {
+          this.status = 'version-mismatch'
+          return
+        }
         if (this.started && msg.gameId === this.gameId) return
         this.adoptGame(msg.gameId, msg.cfg, msg.yourSide, [])
         return
@@ -319,9 +388,6 @@ export class OnlineSession extends BaseSession {
         if (this.isHost && this.state.result) this.startNewGame(this.peerNonce ?? 0, true)
         return
       }
-      case 'roomFull':
-        this.status = 'room-full'
-        return
     }
   }
 
@@ -434,6 +500,10 @@ export class OnlineSession extends BaseSession {
   }
 
   destroy(): void {
+    for (const t of this.timers) clearInterval(t)
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.onVisible)
+    }
     this.transport.close()
   }
 }

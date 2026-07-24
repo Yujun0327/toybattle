@@ -39,6 +39,8 @@
         return 'Friend found! Shuffling the toy boxes…'
       case 'room-full':
         return 'This room already has two players.'
+      case 'version-mismatch':
+        return 'Game versions differ — both players should hard-refresh (Cmd/Ctrl+Shift+R) and retry.'
       default:
         return 'Waiting for your friend to join…'
     }

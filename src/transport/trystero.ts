@@ -36,31 +36,34 @@ export function connectRoom(code: string): Transport {
     { onJoinError: (err) => console.warn('[toybattle] room join error', err) },
   )
 
-  const messageHandlers: ((msg: NetMsg) => void)[] = []
-  const joinHandlers: (() => void)[] = []
-  const leaveHandlers: (() => void)[] = []
+  const messageHandlers: ((msg: NetMsg, peerId: string) => void)[] = []
+  const joinHandlers: ((peerId: string) => void)[] = []
+  const leaveHandlers: ((peerId: string) => void)[] = []
 
   // Payloads travel as JSON strings — simplest fit for trystero's DataPayload.
   const action = room.makeAction<string>('msg', {
-    onMessage: (data) => {
+    onMessage: (data, context) => {
       try {
         const msg = JSON.parse(data) as NetMsg
-        for (const fn of messageHandlers) fn(msg)
+        for (const fn of messageHandlers) fn(msg, context.peerId)
       } catch (err) {
         console.warn('bad message', err)
       }
     },
   })
 
-  room.onPeerJoin = () => {
-    for (const fn of joinHandlers) fn()
+  room.onPeerJoin = (peerId) => {
+    for (const fn of joinHandlers) fn(peerId)
   }
-  room.onPeerLeave = () => {
-    for (const fn of leaveHandlers) fn()
+  room.onPeerLeave = (peerId) => {
+    for (const fn of leaveHandlers) fn(peerId)
   }
 
   return {
-    send: (msg) => void action.send(JSON.stringify(msg)).catch((err) => console.warn('send failed', err)),
+    send: (msg, target) =>
+      void action
+        .send(JSON.stringify(msg), target ? { target } : undefined)
+        .catch((err) => console.warn('send failed', err)),
     onMessage: (fn) => void messageHandlers.push(fn),
     onPeerJoin: (fn) => void joinHandlers.push(fn),
     onPeerLeave: (fn) => void leaveHandlers.push(fn),

@@ -154,6 +154,12 @@ export function legalMoves(ctx: Ctx, state: GameState, player: PlayerId): Move[]
         for (const troop of pend.options) moves.push({ type: 'choice', value: { troop } })
         moves.push({ type: 'skip' })
         return moves
+      case 'xb42Pick': {
+        const count = state.players[opponent(player)].rack.count
+        for (let i = 0; i < count; i++) moves.push({ type: 'choice', value: { index: i } })
+        moves.push({ type: 'skip' })
+        return moves
+      }
       case 'xb42Reveal': {
         const rack = state.players[player].rack.known
         if (rack) moves.push({ type: 'choice', value: { troop: rack[pend.index] } })

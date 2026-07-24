@@ -46,6 +46,8 @@ export type EffectFrame =
 export type PendingChoice =
   | { kind: 'capnPlace'; actor: PlayerId; optional: true }
   | { kind: 'jumboDiscard'; actor: PlayerId; options: BaseId[]; optional: true }
+  /** XB-42's owner blind-picks a position in the opponent's rack (count is public). */
+  | { kind: 'xb42Pick'; actor: PlayerId; optional: true }
   /** actor here is the VICTIM, who must reveal rack[index]. Not optional. */
   | { kind: 'xb42Reveal'; actor: PlayerId; index: number }
   | { kind: 'volcanicMove'; actor: PlayerId; options: { from: BaseId; to: BaseId }[]; optional: true }
@@ -56,6 +58,7 @@ export type ChoiceValue =
   | { place: { troop: TroopType; base: BaseId } } // capnPlace
   | { base: BaseId }                              // jumboDiscard, castleReturn
   | { troop: TroopType }                          // xb42Reveal, cemeteryRecover
+  | { index: number }                             // xb42Pick (blind rack position)
   | { move: { from: BaseId; to: BaseId } }        // volcanicMove
 
 export type Move =

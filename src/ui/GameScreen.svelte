@@ -150,6 +150,8 @@
         return 'The castle recalls a toy — pick one of yours to take back.'
       case 'cemeteryRecover':
         return 'The crypt stirs… recover a discarded toy.'
+      case 'xb42Pick':
+        return "XB-42 raids the enemy rack — pick a face-down tile up top (or skip)!"
       case 'xb42Reveal':
         return 'XB-42 raids your rack…'
     }
@@ -188,8 +190,17 @@
         <span class="objective">{view.players[foe].medals}/{objective}</span>
       </span>
     </div>
-    <div class="foe-rack">
-      <Rack owner={foe} count={view.players[foe].rack.count} compact />
+    <div class="foe-rack" class:raiding={pending?.kind === 'xb42Pick' && session.myTurn}>
+      <Rack
+        owner={foe}
+        tiles={view.players[foe].rack.known ?? null}
+        count={view.players[foe].rack.count}
+        compact
+        selectHidden={pending?.kind === 'xb42Pick' && session.myTurn}
+        onSelect={pending?.kind === 'xb42Pick' && session.myTurn
+          ? (_, index) => submit({ type: 'choice', value: { index } })
+          : undefined}
+      />
       <span class="reserve" title="reserve">🂠 {view.players[foe].reserve.count}</span>
     </div>
     <div class="discards">
@@ -241,7 +252,7 @@
         owner={me}
         tiles={view.players[me].rack.known ?? []}
         {selectedIndex}
-        onSelect={selectTile}
+        onSelect={(t, i) => t && selectTile(t, i)}
       />
       <div class="actions">
         <button
@@ -330,6 +341,19 @@
     display: flex;
     align-items: center;
     gap: 0.6rem;
+  }
+
+  .foe-rack.raiding {
+    outline: 4px dashed var(--gold);
+    outline-offset: 6px;
+    border-radius: 12px;
+    animation: raid-pulse 1s ease-in-out infinite;
+  }
+
+  @keyframes raid-pulse {
+    50% {
+      outline-color: var(--gold-lo);
+    }
   }
 
   .reserve {

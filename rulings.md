@@ -14,8 +14,9 @@ pinned by a named test in `test/`. Change a ruling → change its test.
 4. **Hook vs enemy H.Q.** — Hook's exemption applies to bases only; capturing
    the enemy H.Q. always requires connection.
 5. **XB-42 with an empty opponent rack** — the effect fizzles silently.
-6. **XB-42 randomness** — the stolen index comes from the shared seeded PRNG,
-   so neither player chooses it; the victim only reveals the tile at that index.
+6. **XB-42 steal** — the robot's owner picks a POSITION in the opponent's
+   rack blind (the count is public, contents are not); the victim's client
+   then reveals the tile at that position. Skipping is allowed.
 7. **Castle Field return** — you may not return the tile you just placed
    (pointless undo); any other of your visible tiles is fair game. Skipped
    silently if your rack is full.

@@ -186,10 +186,9 @@ function runFrame(ctx: Ctx, s: GameState, frame: EffectFrame): void {
         return
       }
       case 'xb42': {
-        const victimRack = s.players[enemy].rack
-        if (victimRack.count === 0) return // fizzles
-        const index = sharedRandomBelow(s, victimRack.count)
-        s.pending = { kind: 'xb42Reveal', actor: enemy, index }
+        if (s.players[enemy].rack.count === 0) return // fizzles
+        // the robot's owner picks a rack position blind (contents are hidden)
+        s.pending = { kind: 'xb42Pick', actor, optional: true }
         return
       }
       case 'hook': // placement-time rule, nothing to do now
@@ -278,6 +277,15 @@ function resolveChoice(ctx: Ctx, s: GameState, actor: PlayerId, value: ChoiceVal
       const entry = s.board[value.base].pop()!
       s.players[entry.owner].discard.push(entry.troop)
       checkpoint(ctx, s, actor)
+      return
+    }
+    case 'xb42Pick': {
+      if (!('index' in value)) throw new RulesError('expected a rack position')
+      const victim = opponent(actor)
+      const count = s.players[victim].rack.count
+      if (!Number.isInteger(value.index) || value.index < 0 || value.index >= count)
+        throw new RulesError('bad rack position')
+      s.pending = { kind: 'xb42Reveal', actor: victim, index: value.index }
       return
     }
     case 'xb42Reveal': {

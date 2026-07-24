@@ -9,14 +9,17 @@
     selectedIndex = -1,
     onSelect,
     compact = false,
+    selectHidden = false,
   }: {
     owner: PlayerId
     /** Known tiles (own rack) — or null to render face-down backs. */
     tiles?: TroopType[] | null
     count?: number
     selectedIndex?: number
-    onSelect?: (troop: TroopType, index: number) => void
+    onSelect?: (troop: TroopType | null, index: number) => void
     compact?: boolean
+    /** Allow picking face-down tiles (XB-42's blind steal). */
+    selectHidden?: boolean
   } = $props()
 
   const shown = $derived(tiles ?? Array<null>(count).fill(null))
@@ -31,10 +34,10 @@
       <button
         class="slot"
         class:selected={i === selectedIndex}
-        class:pickable={!!onSelect && t !== null}
+        class:pickable={!!onSelect && (t !== null || selectHidden)}
         style={`transform: rotate(${tilt(i)}deg) translateY(${i === selectedIndex ? -14 : 0}px)`}
-        onclick={() => t !== null && onSelect?.(t, i)}
-        disabled={!onSelect || t === null}
+        onclick={() => (t !== null || selectHidden) && onSelect?.(t, i)}
+        disabled={!onSelect || (t === null && !selectHidden)}
         aria-label={t ?? 'hidden tile'}
       >
         <svg viewBox="0 0 100 120">

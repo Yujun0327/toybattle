@@ -1,6 +1,6 @@
 import type { GameConfig, Move, PlayerId } from '../engine/types'
 
-export const PROTOCOL_VERSION = 1
+export const PROTOCOL_VERSION = 2
 
 export interface WireMove {
   seq: number
@@ -20,10 +20,11 @@ export type NetMsg =
   | { t: 'roomFull' }
 
 export interface Transport {
-  send(msg: NetMsg): void
-  onMessage(fn: (msg: NetMsg) => void): void
-  onPeerJoin(fn: () => void): void
-  onPeerLeave(fn: () => void): void
+  /** Broadcast, or send to one peer when `target` is given. */
+  send(msg: NetMsg, target?: string): void
+  onMessage(fn: (msg: NetMsg, peerId: string) => void): void
+  onPeerJoin(fn: (peerId: string) => void): void
+  onPeerLeave(fn: (peerId: string) => void): void
   close(): void
   /** Number of currently-open signaling relay connections, if known. */
   relayCount?(): number

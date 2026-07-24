@@ -8,7 +8,6 @@ import {
   publicHash,
   redact,
   RulesError,
-  sharedDrawAt,
   topOf,
 } from '../src/engine'
 import { getTerrain } from '../src/terrains'
@@ -247,22 +246,38 @@ describe('troop effects', () => {
     expect(s.players.blue.discard).toEqual(['skully'])
   })
 
-  it("XB-42 steals a shared-PRNG-chosen tile from the opponent's rack", () => {
+  it("XB-42: the owner blind-picks a rack position, the victim reveals it", () => {
     const { ctx, state } = hotseatGame()
     setRack(state, 'red', ['xb42'])
     setRack(state, 'blue', ['roxy', 'star', 'kwak', 'hook'])
     let s = applyMove(ctx, state, 'red', { type: 'place', troop: 'xb42', base: 'a1' })
-    const expectedIndex = sharedDrawAt(state.config.sharedSeed, 0) % 4
-    expect(s.pending).toEqual({ kind: 'xb42Reveal', actor: 'blue', index: expectedIndex })
-    expect(s.sharedRngCursor).toBe(1)
+    expect(s.pending).toEqual({ kind: 'xb42Pick', actor: 'red', optional: true })
 
-    const stolen = ['roxy', 'star', 'kwak', 'hook'][expectedIndex]
+    // the attacker sees one blind option per opponent tile, plus skip
+    const picks = legalMoves(ctx, s, 'red')
+    expect(picks).toHaveLength(5)
+    expect(picks).toContainEqual({ type: 'choice', value: { index: 2 } })
+
+    s = applyMove(ctx, s, 'red', { type: 'choice', value: { index: 2 } })
+    expect(s.pending).toEqual({ kind: 'xb42Reveal', actor: 'blue', index: 2 })
+
     const reveal = legalMoves(ctx, s, 'blue')
-    expect(reveal).toEqual([{ type: 'choice', value: { troop: stolen } }])
+    expect(reveal).toEqual([{ type: 'choice', value: { troop: 'kwak' } }])
     s = applyMove(ctx, s, 'blue', reveal[0])
     expect(s.players.blue.rack.count).toBe(3)
-    expect(s.players.blue.discard).toEqual([stolen])
+    expect(s.players.blue.discard).toEqual(['kwak'])
     expect(s.turn).toBe('blue')
+  })
+
+  it('XB-42 can be skipped, and rejects out-of-range picks', () => {
+    const { ctx, state } = hotseatGame()
+    setRack(state, 'red', ['xb42'])
+    setRack(state, 'blue', ['roxy'])
+    const s = applyMove(ctx, state, 'red', { type: 'place', troop: 'xb42', base: 'a1' })
+    expect(() => applyMove(ctx, s, 'red', { type: 'choice', value: { index: 1 } })).toThrow(/bad rack/)
+    const skipped = applyMove(ctx, s, 'red', { type: 'skip' })
+    expect(skipped.pending).toBeNull()
+    expect(skipped.players.blue.rack.count).toBe(1)
   })
 
   it('XB-42 fizzles against an empty rack', () => {
