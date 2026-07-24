@@ -1,7 +1,6 @@
 import { fullArmy } from '../engine/troops'
-import type { GameConfig, TroopType } from '../engine/types'
-import type { PlayerId } from '../engine/types'
-import type { WireMove } from '../transport/types'
+import type { PlayerId, TroopType } from '../engine/types'
+import type { GameSnapshot } from '../transport/types'
 
 /** Cryptographically shuffle a fresh army and remove 4 tiles unseen → a 20-tile reserve. */
 export function shuffledReserve(): TroopType[] {
@@ -16,11 +15,9 @@ export function shuffledReserve(): TroopType[] {
 }
 
 export interface SavedGame {
-  gameId: string
-  cfg: GameConfig
+  snapshot: GameSnapshot
   side: PlayerId
   reserve: TroopType[]
-  log: WireMove[]
 }
 
 const key = (room: string) => `toybattle:room:${room}`
@@ -36,7 +33,10 @@ export function saveGame(room: string, saved: SavedGame): void {
 export function loadGame(room: string): SavedGame | null {
   try {
     const raw = localStorage.getItem(key(room))
-    return raw ? (JSON.parse(raw) as SavedGame) : null
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as SavedGame
+    if (!parsed?.snapshot?.gameId || !parsed.side || !Array.isArray(parsed.reserve)) return null
+    return parsed
   } catch {
     return null
   }

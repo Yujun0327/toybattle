@@ -6,18 +6,24 @@ import {
   publicHash,
   redact,
 } from '../engine'
-import type { Ctx, GameConfig, GameState, Move, PlayerId } from '../engine'
+import type { Ctx, GameConfig, GameState, Move, PlayerId, TroopType } from '../engine'
 import { opponent } from '../engine/types'
 import { getTerrain } from '../terrains'
-import { PROTOCOL_VERSION, type NetMsg, type Transport, type WireMove } from '../transport/types'
+import {
+  PROTOCOL_VERSION,
+  type Beacon,
+  type GameSnapshot,
+  type Transport,
+  type WireMove,
+} from '../transport/types'
 import { connectRoom } from '../transport/trystero'
-import { clearGame, loadGame, saveGame, shuffledReserve, type SavedGame } from './secrets'
+import { clearGame, loadGame, saveGame, shuffledReserve } from './secrets'
 
 export type SfxEvent = 'place' | 'cover' | 'draw' | 'discard' | 'medal' | 'win' | 'lose' | 'freeze'
 
 export type OnlineStatus =
-  | 'connecting' // joined room, waiting for a peer
-  | 'handshake'  // peer present, deciding host / exchanging config
+  | 'connecting' // in the room, no partner beacon yet
+  | 'handshake'  // partner present, game being created/adopted
   | 'playing'
   | 'peer-left'
   | 'desync'
@@ -74,10 +80,11 @@ abstract class BaseSession {
     this.events = [...this.events.slice(-4), { id: this.eventId++, sfx }]
   }
 
-  protected applyLocal(actor: PlayerId, move: Move): void {
+  protected applyLocal(actor: PlayerId, move: Move, quiet = false): void {
     const before = this.state
     const after = applyMove(this.ctx, before, actor, move)
     this.state = after
+    if (quiet) return
 
     // derive sound effects from the transition
     if (move.type === 'draw') this.emit('draw')
@@ -180,6 +187,25 @@ export class HotseatSession extends BaseSession {
 
 /* ------------------------------------------------------------------ */
 
+/**
+ * Online play over a stateless beacon protocol.
+ *
+ * There is ONE message: a periodic `sync` beacon carrying this client's
+ * identity and its complete view of the shared game (config + full move
+ * log). All logic is a pure merge of "latest beacon" into local state:
+ *
+ * - Host election is a deterministic function both sides compute from any
+ *   single beacon (creator wins; ties broken by clientId order).
+ * - The host creates the game once it sees a partner and simply includes
+ *   it in every beacon; the guest adopts it idempotently.
+ * - Moves ride in the beacon's log; receivers apply the missing suffix.
+ * - Presence = "beacon received recently", independent of transport events.
+ *
+ * Nothing depends on message ordering, connection callbacks, or who spoke
+ * first, so any dropped/stale message is repaired by the next beacon — and
+ * rejoining the room (which we do on a jittered cycle while unpaired, to
+ * shed stale relay sockets) loses nothing.
+ */
 export class OnlineSession extends BaseSession {
   readonly mode = 'online'
   readonly room: string
@@ -187,49 +213,44 @@ export class OnlineSession extends BaseSession {
   peerHere = $state(false)
   side = $state<PlayerId>('red')
   rematchWanted = $state(false)
-
-  private transport: Transport
-  private log: WireMove[] = []
-  private gameId = ''
-  private cfg: GameConfig | null = null
-  private reserve: ReturnType<typeof shuffledReserve> | null = null
-  private myNonce = crypto.getRandomValues(new Uint32Array(1))[0]
-  private peerNonce: number | null = null
-  private creator: boolean
-  private peerCreator = false
-  private started = false
-  /** The one peer we play with — rooms are locked to 2 players. */
-  private partnerId: string | null = null
-  private canReconnect: boolean
-  private timers: ReturnType<typeof setInterval>[] = []
-  private lastReconnect = Date.now()
   /** How many times we've rebuilt the room connection looking for a peer. */
   scanCount = $state(0)
+  /** Host-side terrain selection (set from the lobby before the peer arrives). */
+  pickedTerrain = 'castle-field'
+
+  private transport: Transport
+  private readonly clientId = makeClientId()
+  private readonly creator: boolean
+  private partnerId: string | null = null
+  private partnerCreator = false
+  private snapshot: GameSnapshot | null = null
+  private reserve: TroopType[] | null = null
+  private started = false
+  private lastBeaconIn = 0
+  private lastBeaconOut = 0
+  private lastReconnect = Date.now()
+  private readonly rejoinCycleMs = 20_000 + Math.random() * 6_000
+  private canReconnect: boolean
+  private timers: ReturnType<typeof setInterval>[] = []
   private onVisible = () => {
     if (typeof document === 'undefined' || document.hidden) return
-    // returning to the tab: sockets may have gone stale while asleep
-    if (!this.peerHere) this.reconnect(10_000)
+    if (!this.peerHere) {
+      this.reconnect(10_000)
+      this.sendBeacon()
+    }
   }
 
   constructor(room: string, creator: boolean, transport?: Transport) {
-    // placeholder state until config arrives (or a saved game restores)
-    const placeholderCtx = makeCtx(getTerrain('castle-field'))
     const saved = loadGame(room)
     if (saved) {
-      const ctx = makeCtx(getTerrain(saved.cfg.terrainId))
-      const state = replayLog(ctx, saved)
-      super(ctx, state)
-      this.cfg = saved.cfg
-      this.gameId = saved.gameId
-      this.side = saved.side
-      this.reserve = saved.reserve
-      this.log = saved.log
-      this.started = true
+      const ctx = makeCtx(getTerrain(saved.snapshot.cfg.terrainId))
+      super(ctx, createGame(ctx, saved.snapshot.cfg, { [saved.side]: saved.reserve }))
     } else {
+      const ctx = makeCtx(getTerrain('castle-field'))
       super(
-        placeholderCtx,
+        ctx,
         createGame(
-          placeholderCtx,
+          ctx,
           { terrainId: 'castle-field', sharedSeed: 0, startingPlayer: 'red', rulesVersion: RULES_VERSION },
           {},
         ),
@@ -241,52 +262,291 @@ export class OnlineSession extends BaseSession {
     this.transport = transport ?? connectRoom(room)
     this.attach(this.transport)
 
-    // resilience: relays go stale (idle timeouts, laptop sleep, tab throttling)
-    // — keep hailing until the handshake completes, and rebuild the room
-    // connection if nobody shows up for a while.
-    this.timers.push(
-      setInterval(() => {
-        if (!this.started && this.status !== 'room-full') this.sendHello()
-      }, 3000),
-    )
-    if (this.canReconnect) {
-      // While unpaired, rebuild the room connection on a jittered cycle.
-      // 20s+ exceeds any viable WebRTC handshake, and the per-client jitter
-      // keeps the two sides from tearing down in lockstep — so a fresh join
-      // on one side always overlaps a live join on the other.
-      const cycle = 20_000 + Math.random() * 6_000
-      this.timers.push(
-        setInterval(() => {
-          if (!this.peerHere) this.reconnect(15_000)
-        }, cycle),
-      )
-      if (typeof document !== 'undefined') {
-        document.addEventListener('visibilitychange', this.onVisible)
+    if (saved) {
+      // restore: rebuild local state by replaying the saved log
+      this.side = saved.side
+      this.reserve = saved.reserve
+      this.snapshot = { ...saved.snapshot, log: [] }
+      try {
+        for (const wire of saved.snapshot.log) this.applyWire(wire, true)
+        this.started = true
+        log(`restored game ${this.snapshot.gameId} at move ${this.snapshot.log.length}`)
+        queueMicrotask(() => this.autoRespond())
+      } catch (err) {
+        log(`saved game unusable, starting fresh (${String(err)})`)
+        this.snapshot = null
+        this.reserve = null
+        clearGame(room)
       }
     }
-    log(`session up · room=${room} creator=${creator} resumed=${this.started}`)
+
+    this.timers.push(setInterval(() => this.tick(), 1000))
+    if (this.canReconnect && typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.onVisible)
+    }
+    log(`session up · room=${room} creator=${creator} id=${this.clientId} resumed=${this.started}`)
+  }
+
+  get mySide(): PlayerId {
+    return this.side
+  }
+
+  get viewer(): PlayerId {
+    return this.side
+  }
+
+  get playing(): boolean {
+    return this.started && this.status !== 'desync' && this.status !== 'version-mismatch'
   }
 
   /** Manual "rescan" from the lobby. */
   rescan(): void {
-    if (!this.peerHere) this.reconnect(3_000)
+    if (!this.peerHere) {
+      this.reconnect(3_000)
+      this.sendBeacon()
+    }
   }
 
+  /** Open signaling-relay connections (diagnostics for the lobby). */
+  relayCount(): number {
+    return this.transport.relayCount?.() ?? 0
+  }
+
+  submit(move: Move): void {
+    if (!this.snapshot) return
+    // concede is legal from either seat at any time; everything else only on your turn
+    const actor = move.type === 'concede' ? this.side : this.actor
+    if (actor !== this.side) throw new Error('not your seat')
+    this.applyLocal(actor, move)
+    this.snapshot.log.push({
+      seq: this.snapshot.log.length + 1,
+      actor,
+      move,
+      hash: publicHash(this.state),
+    })
+    this.persist()
+    this.sendBeacon()
+  }
+
+  requestRematch(): void {
+    this.rematchWanted = true
+    if (this.isHost && this.state.result) {
+      this.startRematch()
+    } else {
+      this.sendBeacon()
+    }
+  }
+
+  leave(): void {
+    clearGame(this.room)
+    this.destroy()
+  }
+
+  destroy(): void {
+    for (const t of this.timers) clearInterval(t)
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.onVisible)
+    }
+    this.transport.close()
+  }
+
+  /* ---- internals ---- */
+
   private attach(t: Transport): void {
+    t.onMessage((msg) => this.onBeacon(msg))
+    // a fresh WebRTC link is the perfect moment to introduce ourselves
     t.onPeerJoin((peerId) => {
-      log(`peer joined: ${peerId}`)
-      if (this.partnerId && peerId !== this.partnerId) return // spectator; hello handler rejects them
-      if (this.status === 'connecting') this.status = 'handshake'
-      this.sendHello()
+      log(`transport peer connected: ${peerId}`)
+      this.sendBeacon()
     })
-    t.onPeerLeave((peerId) => {
-      log(`peer left: ${peerId}`)
-      if (peerId !== this.partnerId) return
-      this.partnerId = null
+    t.onPeerLeave((peerId) => log(`transport peer left: ${peerId}`))
+  }
+
+  /** Runs every second: heartbeats, liveness, stale-room rejoin. */
+  private tick(): void {
+    const now = Date.now()
+
+    // presence: beacons, not transport events, are the truth
+    if (this.peerHere && now - this.lastBeaconIn > 15_000) {
       this.peerHere = false
-      if (this.status === 'playing') this.status = 'peer-left'
+      if (this.started && this.status === 'playing') this.status = 'peer-left'
+      log('partner beacons stopped')
+    }
+
+    // beacon cadence: eager while searching/syncing, heartbeat while playing
+    const cadence = this.peerHere && this.snapshot ? 6_000 : 2_500
+    if (now - this.lastBeaconOut >= cadence) this.sendBeacon()
+
+    // shed stale relay sockets while unpaired (jittered so both sides never
+    // tear down in lockstep; rejoining costs nothing — the protocol is stateless)
+    if (!this.peerHere && now - this.lastReconnect > this.rejoinCycleMs) {
+      this.reconnect(this.rejoinCycleMs)
+    }
+  }
+
+  private get isHost(): boolean {
+    if (this.snapshot) return this.snapshot.hostId === this.clientId
+    if (this.creator !== this.partnerCreator) return this.creator
+    return this.clientId < (this.partnerId ?? '~')
+  }
+
+  private sendBeacon(): void {
+    this.lastBeaconOut = Date.now()
+    this.transport.send({
+      t: 'sync',
+      protocol: PROTOCOL_VERSION,
+      room: this.room,
+      clientId: this.clientId,
+      creator: this.creator,
+      partnerId: this.partnerId,
+      wantRematch: this.rematchWanted,
+      game: this.snapshot,
     })
-    t.onMessage((msg, peerId) => this.onMessage(msg, peerId))
+  }
+
+  private onBeacon(b: Beacon): void {
+    if (b.t !== 'sync' || b.room !== this.room || b.clientId === this.clientId) return
+    if (b.protocol !== PROTOCOL_VERSION) {
+      if (!this.started) this.status = 'version-mismatch'
+      return
+    }
+
+    const sameGame = !!(this.snapshot && b.game && b.game.gameId === this.snapshot.gameId)
+
+    // they are locked to someone else → we're the spectator
+    if (b.partnerId && b.partnerId !== this.clientId && !sameGame) {
+      if (!this.started) this.status = 'room-full'
+      return
+    }
+    // a third client while our partner is active → ignore them
+    if (this.partnerId && b.clientId !== this.partnerId) {
+      if (!sameGame && this.peerHere) return
+      // partner came back under a new clientId (refresh), or the seat is open
+      log(`partner reseated: ${this.partnerId} → ${b.clientId}`)
+      this.partnerId = b.clientId
+    }
+    this.partnerId ??= b.clientId
+    this.partnerCreator = b.creator
+    this.lastBeaconIn = Date.now()
+    if (!this.peerHere) {
+      this.peerHere = true
+      log(`partner present: ${b.clientId}`)
+    }
+    if (this.status === 'connecting' || this.status === 'room-full') this.status = 'handshake'
+    if (this.started && this.status === 'peer-left') this.status = 'playing'
+
+    // host creates the game the moment it knows its partner
+    if (!this.snapshot && this.isHost) this.createNewGame()
+
+    if (b.game) this.mergeGame(b.game)
+
+    // rematch: host acts on either side's wish
+    if (this.snapshot && this.isHost && this.state.result && (b.wantRematch || this.rematchWanted)) {
+      this.startRematch()
+    }
+
+    // repair: if they lack something we have, answer immediately
+    if (
+      this.snapshot &&
+      (!b.game ||
+        (b.game.gameId === this.snapshot.gameId && b.game.log.length < this.snapshot.log.length))
+    ) {
+      this.sendBeacon()
+    }
+  }
+
+  private createNewGame(rematch = false): void {
+    const hostSide: PlayerId = rematch ? opponent(this.side) : Math.random() < 0.5 ? 'red' : 'blue'
+    const snapshot: GameSnapshot = {
+      gameId: `${this.room}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(36)}`,
+      cfg: {
+        terrainId: rematch && this.snapshot ? this.snapshot.cfg.terrainId : this.pickedTerrain,
+        sharedSeed: crypto.getRandomValues(new Uint32Array(1))[0],
+        startingPlayer: Math.random() < 0.5 ? 'red' : 'blue',
+        rulesVersion: RULES_VERSION,
+      },
+      hostId: this.clientId,
+      hostSide,
+      log: [],
+    }
+    log(`hosting game ${snapshot.gameId} on ${snapshot.cfg.terrainId}, I am ${hostSide}`)
+    this.adopt(snapshot, hostSide)
+  }
+
+  private startRematch(): void {
+    this.createNewGame(true)
+  }
+
+  /** Take a snapshot as our game (host after creating, guest on receipt). */
+  private adopt(snap: GameSnapshot, side: PlayerId): void {
+    this.ctx = makeCtx(getTerrain(snap.cfg.terrainId))
+    this.snapshot = { ...snap, log: [] }
+    this.side = side
+    this.reserve = shuffledReserve()
+    this.rematchWanted = false
+    this.state = createGame(this.ctx, snap.cfg, { [side]: this.reserve })
+    this.started = true
+    if (this.status !== 'desync') this.status = 'playing'
+    try {
+      for (const wire of snap.log) this.applyWire(wire, true)
+    } catch (err) {
+      log(`adopt replay failed: ${String(err)}`)
+      this.status = 'desync'
+    }
+    this.persist()
+    this.sendBeacon()
+    queueMicrotask(() => this.autoRespond())
+  }
+
+  private mergeGame(g: GameSnapshot): void {
+    if (g.cfg.rulesVersion !== RULES_VERSION) {
+      if (!this.started) this.status = 'version-mismatch'
+      return
+    }
+    if (!this.snapshot) {
+      // guest adopts the host's game
+      const side = g.hostId === this.clientId ? g.hostSide : opponent(g.hostSide)
+      log(`adopting game ${g.gameId} as ${side}`)
+      this.adopt(g, side)
+      return
+    }
+    if (g.gameId !== this.snapshot.gameId) {
+      // conflicting games: the host's wins; a guest holding a stale game defers
+      if (!this.isHost) {
+        log(`replacing game ${this.snapshot.gameId} with host's ${g.gameId}`)
+        this.adopt(g, opponent(g.hostSide))
+      }
+      return
+    }
+    // same game: apply whatever suffix we're missing
+    const before = this.snapshot.log.length
+    for (let i = this.snapshot.log.length; i < g.log.length; i++) {
+      try {
+        this.applyWire(g.log[i], g.log.length - this.snapshot.log.length > 2)
+      } catch (err) {
+        log(`remote move rejected: ${String(err)}`)
+        this.status = 'desync'
+        return
+      }
+    }
+    if (this.snapshot.log.length > before) {
+      this.persist()
+      queueMicrotask(() => this.autoRespond())
+    }
+  }
+
+  /** Validate + apply one logged move; quiet suppresses sfx for bulk replays. */
+  private applyWire(wire: WireMove, quiet = false): void {
+    if (!this.snapshot) return
+    if (wire.seq !== this.snapshot.log.length + 1) throw new Error(`bad seq ${wire.seq}`)
+    this.applyLocal(wire.actor, wire.move, quiet)
+    if (publicHash(this.state) !== wire.hash) throw new Error(`hash mismatch at seq ${wire.seq}`)
+    this.snapshot.log.push(wire)
+  }
+
+  private persist(): void {
+    if (!this.snapshot || !this.reserve) return
+    saveGame(this.room, { snapshot: this.snapshot, side: this.side, reserve: this.reserve })
   }
 
   /** Tear down a possibly-stale room connection and join fresh (same room code). */
@@ -304,244 +564,10 @@ export class OnlineSession extends BaseSession {
     this.transport = connectRoom(this.room)
     this.attach(this.transport)
   }
-
-  get mySide(): PlayerId {
-    return this.side
-  }
-
-  get viewer(): PlayerId {
-    return this.side
-  }
-
-  get playing(): boolean {
-    return this.started && (this.status === 'playing' || this.status === 'peer-left')
-  }
-
-  private sendHello() {
-    this.transport.send({
-      t: 'hello',
-      nonce: this.myNonce,
-      protocol: PROTOCOL_VERSION,
-      creator: this.creator,
-      haveGame: this.started ? this.gameId : null,
-    })
-  }
-
-  private get isHost(): boolean {
-    // the room creator hosts; nonce comparison only breaks creator-flag ties
-    if (this.creator !== this.peerCreator) return this.creator
-    if (this.peerNonce === null) return this.creator
-    return this.myNonce > this.peerNonce
-  }
-
-  private onMessage(msg: NetMsg, peerId: string): void {
-    // roomFull must get through even though the sender is not our partner —
-    // it's the answer to a rejected hello.
-    if (msg.t === 'roomFull') {
-      if (!this.started) this.status = 'room-full'
-      return
-    }
-    // 2-player lock: the first peer to say hello takes the seat; later peers
-    // are turned away. Non-partner messages are otherwise ignored.
-    if (msg.t === 'hello') {
-      if (this.partnerId === null) {
-        this.partnerId = peerId
-      } else if (peerId !== this.partnerId) {
-        this.transport.send({ t: 'roomFull' }, peerId)
-        return
-      }
-    } else if (peerId !== this.partnerId) {
-      return
-    }
-
-    if (msg.t !== 'move') log(`recv ${msg.t} from ${peerId}`)
-
-    switch (msg.t) {
-      case 'hello': {
-        this.peerHere = true
-        this.peerNonce = msg.nonce
-        this.peerCreator = msg.creator
-        if (this.status === 'connecting') this.status = 'handshake'
-        if (this.started) {
-          // resume: push our full log; the peer adopts it if it's ahead of theirs
-          this.transport.send({
-            t: 'resync',
-            gameId: this.gameId,
-            cfg: this.cfg!,
-            yourSide: opponent(this.side),
-            log: this.log,
-          })
-          this.status = 'playing'
-        } else if (this.isHost) {
-          this.startNewGame(msg.nonce)
-        }
-        return
-      }
-      case 'config': {
-        if (msg.cfg.rulesVersion !== RULES_VERSION) {
-          this.status = 'version-mismatch'
-          return
-        }
-        if (this.started && msg.gameId === this.gameId) return
-        this.adoptGame(msg.gameId, msg.cfg, msg.yourSide, [])
-        return
-      }
-      case 'move': {
-        if (!this.started) return
-        this.receiveMove(msg.wire)
-        return
-      }
-      case 'resyncReq': {
-        if (!this.started) return
-        this.transport.send({
-          t: 'resync',
-          gameId: this.gameId,
-          cfg: this.cfg!,
-          yourSide: opponent(this.side),
-          log: this.log,
-        })
-        return
-      }
-      case 'resync': {
-        if (!this.started) {
-          this.adoptGame(msg.gameId, msg.cfg, msg.yourSide, msg.log)
-          return
-        }
-        if (msg.gameId === this.gameId && msg.log.length > this.log.length) {
-          this.rebuildFrom(msg.log)
-        }
-        this.status = 'playing'
-        return
-      }
-      case 'rematchReq': {
-        if (this.isHost && this.state.result) this.startNewGame(this.peerNonce ?? 0, true)
-        return
-      }
-    }
-  }
-
-  private startNewGame(peerNonce: number, rematch = false): void {
-    const mySide: PlayerId = rematch ? opponent(this.side) : Math.random() < 0.5 ? 'red' : 'blue'
-    const cfg: GameConfig = {
-      terrainId: rematch ? this.cfg!.terrainId : this.pickedTerrain,
-      sharedSeed: (this.myNonce ^ peerNonce ^ Date.now()) >>> 0,
-      startingPlayer: Math.random() < 0.5 ? 'red' : 'blue',
-      rulesVersion: RULES_VERSION,
-    }
-    const gameId = `${this.room}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(36)}`
-    log(`hosting game ${gameId} on ${cfg.terrainId}, I am ${mySide}`)
-    this.transport.send({ t: 'config', gameId, cfg, yourSide: opponent(mySide) })
-    this.adoptGame(gameId, cfg, mySide, [])
-  }
-
-  /** Host-side terrain selection (set from the lobby before the peer arrives). */
-  pickedTerrain = 'castle-field'
-
-  private adoptGame(gameId: string, cfg: GameConfig, side: PlayerId, log: WireMove[]): void {
-    this.ctx = makeCtx(getTerrain(cfg.terrainId))
-    this.gameId = gameId
-    this.cfg = cfg
-    this.side = side
-    this.reserve = shuffledReserve()
-    this.log = []
-    this.rematchWanted = false
-    this.state = createGame(this.ctx, cfg, { [side]: this.reserve })
-    this.started = true
-    this.status = 'playing'
-    for (const wire of log) this.receiveMove(wire) // resumed game: replay the peer's log
-    this.persist()
-    queueMicrotask(() => this.autoRespond())
-  }
-
-  private rebuildFrom(log: WireMove[]): void {
-    if (!this.cfg || !this.reserve) return
-    this.state = createGame(this.ctx, this.cfg, { [this.side]: this.reserve })
-    this.log = []
-    for (const wire of log) this.receiveMove(wire)
-    this.persist()
-  }
-
-  private persist(): void {
-    if (!this.cfg || !this.reserve) return
-    saveGame(this.room, {
-      gameId: this.gameId,
-      cfg: this.cfg,
-      side: this.side,
-      reserve: this.reserve,
-      log: this.log,
-    } satisfies SavedGame)
-  }
-
-  private receiveMove(wire: WireMove): void {
-    if (wire.seq !== this.log.length + 1) {
-      if (wire.seq > this.log.length + 1) this.transport.send({ t: 'resyncReq', haveSeq: this.log.length })
-      return // duplicate or out of order
-    }
-    try {
-      this.applyLocal(wire.actor, wire.move)
-    } catch (err) {
-      console.error('rejected remote move', wire, err)
-      this.status = 'desync'
-      return
-    }
-    if (publicHash(this.state) !== wire.hash) {
-      this.status = 'desync'
-      this.transport.send({ t: 'resyncReq', haveSeq: 0 })
-      return
-    }
-    this.log.push(wire)
-    this.persist()
-  }
-
-  submit(move: Move): void {
-    if (!this.started) return
-    // concede is legal from either seat at any time; everything else only on your turn
-    const actor = move.type === 'concede' ? this.side : this.actor
-    if (actor !== this.side) throw new Error('not your seat')
-    this.applyLocal(actor, move)
-    const wire: WireMove = {
-      seq: this.log.length + 1,
-      actor,
-      move,
-      hash: publicHash(this.state),
-    }
-    this.log.push(wire)
-    this.persist()
-    this.transport.send({ t: 'move', wire })
-  }
-
-  /** Open signaling-relay connections (diagnostics for the lobby). */
-  relayCount(): number {
-    return this.transport.relayCount?.() ?? 0
-  }
-
-  requestRematch(): void {
-    this.rematchWanted = true
-    if (this.isHost && this.state.result) {
-      this.startNewGame(this.peerNonce ?? 0, true)
-    } else {
-      this.transport.send({ t: 'rematchReq' })
-    }
-  }
-
-  leave(): void {
-    clearGame(this.room)
-    this.destroy()
-  }
-
-  destroy(): void {
-    for (const t of this.timers) clearInterval(t)
-    if (typeof document !== 'undefined') {
-      document.removeEventListener('visibilitychange', this.onVisible)
-    }
-    this.transport.close()
-  }
 }
 
-function replayLog(ctx: Ctx, saved: SavedGame): GameState {
-  let state = createGame(ctx, saved.cfg, { [saved.side]: saved.reserve })
-  for (const wire of saved.log) {
-    state = applyMove(ctx, state, wire.actor, wire.move)
-  }
-  return state
+function makeClientId(): string {
+  const bytes = new Uint8Array(8)
+  crypto.getRandomValues(bytes)
+  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
 }

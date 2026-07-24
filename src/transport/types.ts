@@ -1,6 +1,6 @@
 import type { GameConfig, Move, PlayerId } from '../engine/types'
 
-export const PROTOCOL_VERSION = 2
+export const PROTOCOL_VERSION = 3
 
 export interface WireMove {
   seq: number
@@ -10,14 +10,35 @@ export interface WireMove {
   hash: string
 }
 
-export type NetMsg =
-  | { t: 'hello'; nonce: number; protocol: number; creator: boolean; haveGame: string | null }
-  | { t: 'config'; gameId: string; cfg: GameConfig; yourSide: PlayerId }
-  | { t: 'move'; wire: WireMove }
-  | { t: 'resyncReq'; haveSeq: number }
-  | { t: 'resync'; gameId: string; cfg: GameConfig; yourSide: PlayerId; log: WireMove[] }
-  | { t: 'rematchReq' }
-  | { t: 'roomFull' }
+/** The complete shared description of a game — everything public. */
+export interface GameSnapshot {
+  gameId: string
+  cfg: GameConfig
+  /** clientId of the host that created this game. */
+  hostId: string
+  hostSide: PlayerId
+  log: WireMove[]
+}
+
+/**
+ * The ONLY wire message. Stateless-per-message: every beacon carries the
+ * full shared state, so convergence never depends on ordering, connection
+ * events, or which side spoke first — any lost message is repaired by the
+ * next beacon.
+ */
+export interface Beacon {
+  t: 'sync'
+  protocol: number
+  room: string
+  clientId: string
+  creator: boolean
+  /** Who this client considers its opponent (spectator detection). */
+  partnerId: string | null
+  wantRematch: boolean
+  game: GameSnapshot | null
+}
+
+export type NetMsg = Beacon
 
 export interface Transport {
   /** Broadcast, or send to one peer when `target` is given. */
