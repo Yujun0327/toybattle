@@ -58,7 +58,7 @@
       {statusText}
     </div>
     <div class="relays" class:bad={relays === 0}>
-      {relays > 0 ? `signal: ${relays} relay${relays === 1 ? '' : 's'} connected` : 'signal: connecting to relays…'}
+      {relays > 0 ? `signal: ${relays}/3 brokers connected` : 'signal: connecting to brokers…'}
       {#if session.scanCount > 0 && !session.peerHere}
         · rescan #{session.scanCount}
       {/if}
@@ -69,8 +69,8 @@
     {#if waitedLong && !session.peerHere}
       <p class="hint">
         {#if relays === 0}
-          Can't reach the signaling relays — a firewall or network filter may be blocking them.
-          Try a different network (e.g. phone hotspot).
+          Can't reach the game's message brokers — a firewall or network filter may be blocking
+          them. Try a different network (e.g. phone hotspot).
         {:else}
           Still waiting… make sure your friend opened the exact link (or entered code
           <strong>{session.room}</strong>) and left the tab open. Both of you should be on the

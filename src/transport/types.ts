@@ -43,10 +43,17 @@ export type NetMsg = Beacon
 export interface Transport {
   /** Broadcast, or send to one peer when `target` is given. */
   send(msg: NetMsg, target?: string): void
+  /**
+   * peerId is transport-specific (for MQTT it's the broker URL) — session
+   * logic identifies players by beacon.clientId, never by transport peerId.
+   */
   onMessage(fn: (msg: NetMsg, peerId: string) => void): void
+  /** Fired when a channel comes up (MQTT: per-broker connect) — used as an eager-beacon trigger. */
   onPeerJoin(fn: (peerId: string) => void): void
   onPeerLeave(fn: (peerId: string) => void): void
   close(): void
-  /** Number of currently-open signaling relay connections, if known. */
+  /** Number of currently-open broker/relay connections, if known. */
   relayCount?(): number
+  /** Nudge any disconnected channels to reconnect immediately. */
+  wake?(): void
 }

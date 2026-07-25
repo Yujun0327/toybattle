@@ -4,8 +4,9 @@ import { publicHash } from '../src/engine'
 import type { Move } from '../src/engine'
 import type { NetMsg, Transport } from '../src/transport/types'
 
-/** A pair of loopback transports with async (microtask) delivery. */
-function transportPair(): [Transport, Transport, () => void] {
+/** A pair of loopback transports with async (microtask) delivery.
+ *  dupes > 1 simulates MQTT multi-broker delivery (every message arrives N×). */
+function transportPair(dupes = 1): [Transport, Transport, () => void] {
   const handlers: [((m: NetMsg, peerId: string) => void)[], ((m: NetMsg, peerId: string) => void)[]] = [
     [],
     [],
@@ -27,7 +28,7 @@ function transportPair(): [Transport, Transport, () => void] {
     send: (msg, target) => {
       const other = self === 0 ? 1 : 0
       if (target && target !== ids[other]) return
-      queue.push({ to: other, from: ids[self], msg })
+      for (let d = 0; d < dupes; d++) queue.push({ to: other, from: ids[self], msg })
     },
     onMessage: (fn) => void handlers[self].push(fn),
     onPeerJoin: (fn) => void joins[self].push(fn),
@@ -157,6 +158,32 @@ describe('sessions', () => {
     }
     expect(host.state.result).not.toBeNull()
     expect(guest.state.result).toEqual(host.state.result)
+  })
+
+  it('triplicated delivery (MQTT multi-broker) stays perfectly in sync', async () => {
+    const [ta, tb, connect] = transportPair(3)
+    const host = new OnlineSession('TEST44', true, ta)
+    host.pickedTerrain = 'castle-field'
+    const guest = new OnlineSession('TEST44', false, tb)
+    connect()
+    await settle(2)
+    expect(host.playing).toBe(true)
+    expect(guest.playing).toBe(true)
+
+    let guard = 0
+    while (!host.state.result && guard++ < 200) {
+      const active = host.myTurn ? host : guest
+      const moves = active.myMoves()
+      if (moves.length === 0) {
+        await settle(2)
+        continue
+      }
+      active.submit(moves[Math.floor(Math.random() * moves.length)])
+      await settle(1)
+      expect(publicHash(host.state)).toBe(publicHash(guest.state))
+      expect(host.status).not.toBe('desync')
+      expect(guest.status).not.toBe('desync')
+    }
   })
 
   it('a third player is turned away and cannot disturb the game', async () => {

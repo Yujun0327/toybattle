@@ -16,7 +16,7 @@ import {
   type Transport,
   type WireMove,
 } from '../transport/types'
-import { connectRoom } from '../transport/trystero'
+import { connectRoom } from '../transport/mqtt'
 import { clearGame, loadGame, saveGame, shuffledReserve } from './secrets'
 
 export type SfxEvent = 'place' | 'cover' | 'draw' | 'discard' | 'medal' | 'win' | 'lose' | 'freeze'
@@ -225,19 +225,21 @@ export class OnlineSession extends BaseSession {
   private partnerCreator = false
   private snapshot: GameSnapshot | null = null
   private reserve: TroopType[] | null = null
-  private started = false
+  /**
+   * MUST be reactive: `playing` is `started && status…`, and if `started`
+   * were a plain field the template's first read would short-circuit before
+   * touching reactive state, register no dependencies, and freeze the app
+   * on the lobby forever (the original "creator tab never starts" bug).
+   */
+  private started = $state(false)
   private lastBeaconIn = 0
   private lastBeaconOut = 0
-  private lastReconnect = Date.now()
-  private readonly rejoinCycleMs = 20_000 + Math.random() * 6_000
-  private canReconnect: boolean
   private timers: ReturnType<typeof setInterval>[] = []
   private onVisible = () => {
     if (typeof document === 'undefined' || document.hidden) return
-    if (!this.peerHere) {
-      this.reconnect(10_000)
-      this.sendBeacon()
-    }
+    // waking tab: nudge any dropped broker connections and re-announce
+    this.transport.wake?.()
+    this.sendBeacon()
   }
 
   constructor(room: string, creator: boolean, transport?: Transport) {
@@ -258,7 +260,6 @@ export class OnlineSession extends BaseSession {
     }
     this.room = room
     this.creator = creator
-    this.canReconnect = !transport
     this.transport = transport ?? connectRoom(room)
     this.attach(this.transport)
 
@@ -281,7 +282,7 @@ export class OnlineSession extends BaseSession {
     }
 
     this.timers.push(setInterval(() => this.tick(), 1000))
-    if (this.canReconnect && typeof document !== 'undefined') {
+    if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', this.onVisible)
     }
     log(`session up · room=${room} creator=${creator} id=${this.clientId} resumed=${this.started}`)
@@ -299,12 +300,11 @@ export class OnlineSession extends BaseSession {
     return this.started && this.status !== 'desync' && this.status !== 'version-mismatch'
   }
 
-  /** Manual "rescan" from the lobby. */
+  /** Manual "rescan" from the lobby: reconnect dropped brokers + re-announce. */
   rescan(): void {
-    if (!this.peerHere) {
-      this.reconnect(3_000)
-      this.sendBeacon()
-    }
+    this.scanCount++
+    this.transport.wake?.()
+    this.sendBeacon()
   }
 
   /** Open signaling-relay connections (diagnostics for the lobby). */
@@ -376,12 +376,6 @@ export class OnlineSession extends BaseSession {
     // beacon cadence: eager while searching/syncing, heartbeat while playing
     const cadence = this.peerHere && this.snapshot ? 6_000 : 2_500
     if (now - this.lastBeaconOut >= cadence) this.sendBeacon()
-
-    // shed stale relay sockets while unpaired (jittered so both sides never
-    // tear down in lockstep; rejoining costs nothing — the protocol is stateless)
-    if (!this.peerHere && now - this.lastReconnect > this.rejoinCycleMs) {
-      this.reconnect(this.rejoinCycleMs)
-    }
   }
 
   private get isHost(): boolean {
@@ -547,22 +541,6 @@ export class OnlineSession extends BaseSession {
   private persist(): void {
     if (!this.snapshot || !this.reserve) return
     saveGame(this.room, { snapshot: this.snapshot, side: this.side, reserve: this.reserve })
-  }
-
-  /** Tear down a possibly-stale room connection and join fresh (same room code). */
-  private reconnect(minSpacingMs: number): void {
-    if (!this.canReconnect) return
-    if (Date.now() - this.lastReconnect < minSpacingMs) return
-    this.lastReconnect = Date.now()
-    this.scanCount++
-    log(`rescanning for a peer (attempt ${this.scanCount})`)
-    try {
-      this.transport.close()
-    } catch {
-      /* already dead */
-    }
-    this.transport = connectRoom(this.room)
-    this.attach(this.transport)
   }
 }
 

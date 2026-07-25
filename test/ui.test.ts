@@ -2,8 +2,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushSync, mount, unmount } from 'svelte'
 
-// keep jsdom clear of real WebRTC / audio
-vi.mock('../src/transport/trystero', () => ({
+// keep jsdom clear of real network / audio
+vi.mock('../src/transport/mqtt', () => ({
   connectRoom: () => ({
     send: () => {},
     onMessage: () => {},

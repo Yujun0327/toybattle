@@ -1,6 +1,6 @@
 <script lang="ts">
   import { HotseatSession, OnlineSession } from './app/session.svelte'
-  import { makeRoomCode } from './transport/trystero'
+  import { makeRoomCode } from './transport/mqtt'
   import Home from './ui/Home.svelte'
   import Lobby from './ui/Lobby.svelte'
   import GameScreen from './ui/GameScreen.svelte'
