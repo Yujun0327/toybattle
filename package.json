@@ -25,6 +25,6 @@
   "dependencies": {
     "@fontsource/lilita-one": "^5.2.8",
     "@fontsource/nunito": "^5.2.7",
-    "mqtt": "^5.15.2"
+    "@yujun/game-net": "github:Yujun0327/game-net#v0.2.1"
   }
 }

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { HotseatSession, OnlineSession } from './app/session.svelte'
-  import { makeRoomCode } from './transport/mqtt'
+  import { makeRoomCode } from '@yujun/game-net'
   import Home from './ui/Home.svelte'
   import Lobby from './ui/Lobby.svelte'
   import GameScreen from './ui/GameScreen.svelte'
@@ -29,6 +29,10 @@
   }
 
   syncFromHash()
+  // debugging handle (harmless in prod; used by the e2e smoke harness)
+  $effect(() => {
+    ;(window as unknown as Record<string, unknown>).__toybattle = online ?? hotseat
+  })
   $effect(() => {
     const handler = () => syncFromHash()
     window.addEventListener('hashchange', handler)

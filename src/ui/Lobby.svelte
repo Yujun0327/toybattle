@@ -58,7 +58,7 @@
       {statusText}
     </div>
     <div class="relays" class:bad={relays === 0}>
-      {relays > 0 ? `signal: ${relays}/3 brokers connected` : 'signal: connecting to brokers…'}
+      {relays > 0 ? `signal: ${relays}/${session.brokerCount()} brokers connected` : 'signal: connecting to brokers…'}
       {#if session.scanCount > 0 && !session.peerHere}
         · rescan #{session.scanCount}
       {/if}
