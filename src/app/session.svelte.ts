@@ -17,6 +17,7 @@ import {
   type GameAdapter,
   type Transport,
 } from '@yujun/game-net'
+import { WalletSession, defaultLedger, loadIdentity, type Identity, type Ledger, type LockState, type Payout } from '@yujun/game-net/wallet'
 import { shuffledReserve } from './secrets'
 
 /** Storage prefix and MQTT topic namespace for this game. */
@@ -232,12 +233,15 @@ function makeAdapter(host: () => OnlineSession | null): GameAdapter<GameConfig, 
     hash: publicHash,
     actor: (s) => seatOf(s.pending?.actor ?? s.turn),
     isOver: (s) => s.result !== null,
+    winners: (s) => (s.result?.winner ? [seatOf(s.result.winner)] : []),
     // concede is legal from either seat at any time; everything else only on your turn
     actorFor: (s, seat, move) => (move.type === 'concede' || seatOf(s.pending?.actor ?? s.turn) === seat ? seat : null),
   }
 }
 
 export interface OnlineTestHooks {
+  ledger?: Ledger
+  identity?: Identity
   transport?: Transport<Beacon<GameConfig, Move>>
   now?: () => number
   timers?: boolean
@@ -253,6 +257,7 @@ export class OnlineSession extends BaseSession {
   pickedTerrain = DEFAULT_TERRAIN
 
   private readonly core: Core
+  private wallet: WalletSession<GameConfig, GameState, Move, TroopType[]> | null = null
   /**
    * Reactive revision, bumped on every core change. Every getter reads it
    * first, so templates track it even when the rest short-circuits — if
@@ -284,6 +289,12 @@ export class OnlineSession extends BaseSession {
     this.seenLog = core.logLength
     this.gameId = core.snapshot?.gameId ?? ''
     core.subscribe(() => this.sync())
+    // the platform wallet: locks stakes, signs and posts settlements, reports payouts
+    const ledger = test.ledger ?? (test.transport ? null : defaultLedger())
+    if (ledger) {
+      this.wallet = new WalletSession(core, APP, test.identity ?? loadIdentity(), ledger, test.now)
+      this.wallet.subscribe(() => this.rev++)
+    }
     // no lobby ritual in Toy Battle: everyone is always ready and the host deals
     // the moment the second player shows up
     core.setReady(true)
@@ -405,11 +416,27 @@ export class OnlineSession extends BaseSession {
     return this.core
   }
 
+  /** Wallet outcome of the current game (null when this build has no wallet). */
+  get payout(): Payout | null {
+    void this.rev
+    return this.wallet?.payout ?? null
+  }
+
+  get lockState(): LockState | null {
+    void this.rev
+    return this.wallet?.lock ?? null
+  }
+
+  get ledger(): Ledger | null {
+    return this.wallet ? (this.wallet as unknown as { ledger: Ledger }).ledger : null
+  }
+
   leave(): void {
     this.core.leave()
   }
 
   destroy(): void {
+    this.wallet?.destroy()
     this.core.destroy()
   }
 }

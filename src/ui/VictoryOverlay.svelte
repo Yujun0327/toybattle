@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PayoutLine from './PayoutLine.svelte'
   import type { GameResultReason, PlayerId } from '../engine/types'
   import { HotseatSession, OnlineSession } from '../app/session.svelte'
 
@@ -69,6 +70,7 @@
       <span class="side blue-side">★ {session.state.players.blue.medals} BLUE</span>
     </div>
     <div class="row">
+      <PayoutLine payout={online?.payout ?? null} lock={online?.lockState ?? null} />
       <button class="btn gold" onclick={onRematch}>
         {online && !online.rematchWanted ? 'Rematch' : online ? 'Waiting…' : 'Rematch'}
       </button>

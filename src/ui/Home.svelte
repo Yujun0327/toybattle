@@ -1,4 +1,5 @@
 <script lang="ts">
+  import WalletBadge from './WalletBadge.svelte'
   import { TERRAINS } from '../terrains'
   import { ALL_TROOP_TYPES } from '../engine/troops'
   import TroopTile from './TroopTile.svelte'
@@ -44,6 +45,7 @@
     </h1>
     <p class="tag sticker">place your toys · hold the line · capture the flag</p>
   </header>
+  <WalletBadge />
 
   <nav class="menu">
     <button class="btn red" onclick={() => (panel = panel === 'create' ? null : 'create')}>Create room</button>
